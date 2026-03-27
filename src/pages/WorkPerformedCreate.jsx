@@ -202,7 +202,7 @@ export default function WorkPerformedCreate() {
       ...prev,
       [id]: {
         ...prev[id],
-        [field]: value // 🔥 всегда строка
+        [field]: value
       }
     }));
   };
@@ -224,7 +224,7 @@ export default function WorkPerformedCreate() {
       service_type: manual.service_type?.value,
       service_id: manual.service_id,
       unit_of_measure: manual.unit_of_measure?.value,
-      quantity: Number(manual.quantity),
+      quantity: manual.quantity,
       stage_id: manual.stage_id?.value,
       subsection_id: manual.subsection_id?.value || null,
       item_type: 2,
