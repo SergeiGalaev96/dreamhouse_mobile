@@ -140,7 +140,7 @@ export default function Estimates() {
               <div className="flex justify-between text-sm">
 
                 <span className="font-semibold">
-                  Смета № {e.id}
+                  {e.name}
                 </span>
 
                 <span className="text-[11px] text-gray-400">

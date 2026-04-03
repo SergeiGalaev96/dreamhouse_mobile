@@ -73,12 +73,12 @@ export default function WorkPerformed() {
     if (res.success) {
 
       // 🔥 грузим сметы
-      const dicts = await loadDictionaries(["materialEstimates"]);
+      // const dicts = await loadDictionaries(["materialEstimates"]);
 
-      const estimates = [...(dicts.materialEstimates || [])]
-        .sort((a, b) => a.block_id - b.block_id);
+      // const estimates = [...(dicts.materialEstimates || [])]
+      //   .sort((a, b) => a.block_id - b.block_id);
 
-      const firstEstimateId = estimates[0]?.id || null;
+      // const firstEstimateId = estimates[0]?.id || null;
 
       // 🔥 init сразу при установке
       const prepared = res.data.map(a => ({
@@ -91,8 +91,8 @@ export default function WorkPerformed() {
             ...item,
             currency: item.currency ?? 1,
             currency_rate: item.currency_rate ?? null,
-            material_estimate_id:
-              item.material_estimate_id ?? firstEstimateId
+            // material_estimate_id:
+            //   item.material_estimate_id ?? firstEstimateId
           };
 
         })
@@ -417,9 +417,11 @@ export default function WorkPerformed() {
 
       for (const item of act.items.filter(i => i.item_type === 2)) {
 
+        const material_estimate_id = await findEstimateByBlock()
+
         const createPayload = [
           {
-            material_estimate_id: item.material_estimate_id,
+            material_estimate_id: material_estimate_id,
             stage_id: item.stage_id,
             subsection_id: item.subsection_id,
             item_type: 2,
@@ -497,6 +499,13 @@ export default function WorkPerformed() {
     }
 
   };
+
+  const findEstimateByBlock = async () => {
+    const est = dictionaries["materialEstimates"]?.find(x => x.block_id === Number(blockId));
+    const est_id = est.id
+    // console.log("EST ID", est_id)
+    return est_id
+  }
 
 
 
@@ -727,7 +736,6 @@ export default function WorkPerformed() {
                       {actFiles.map((file, index) => {
 
                         const isImage = file.mime_type?.startsWith("image");
-                        const fileUrl = getFileUrl(file.id);
 
                         return (
                           <div
@@ -1033,7 +1041,7 @@ export default function WorkPerformed() {
                             </div>
 
                             {/* 🔥 3 СТРОКА — СМЕТА */}
-                            <select
+                            {/* <select
                               value={item.material_estimate_id || ""}
                               onChange={(e) =>
                                 updateItemField(
@@ -1052,7 +1060,7 @@ export default function WorkPerformed() {
                                     {est.label}
                                   </option>
                                 ))}
-                            </select>
+                            </select> */}
 
                           </div>
 

@@ -601,7 +601,6 @@ export default function MaterialRequestsCreate() {
                   className="fixed inset-0 z-50 flex flex-col justify-end"
                   onClick={() => setShowMaterialModal(false)}
                 >
-
                   {/* overlay */}
                   <div className="absolute inset-0 bg-black/60" />
 
@@ -641,11 +640,23 @@ export default function MaterialRequestsCreate() {
                     <div className="flex-1 overflow-y-auto px-2">
 
                       {getOptions("materials", [
-                        "material_type",
+                        "type",
                         "unit_of_measure"
-                      ]).filter(m =>
-                        m.label.toLowerCase().includes(search.toLowerCase())
-                      )
+                      ])
+                        .filter(m => {
+
+                          // 🔥 фильтр по типу
+                          if (manual.material_type?.value) {
+                            // console.log("material:", m);
+                            // console.log("MAN", manual.material_type)
+                            if (Number(m.type) !== Number(manual.material_type.value)) {
+                              return false;
+                            }
+                          }
+
+                          // 🔍 поиск
+                          return m.label.toLowerCase().includes(search.toLowerCase());
+                        })
                         .map(item => (
 
                           <div
@@ -716,7 +727,6 @@ export default function MaterialRequestsCreate() {
 
 
               {/* STAGE */}
-
               <Select
                 styles={selectStyles}
                 options={getOptions("blockStages")}
@@ -732,10 +742,7 @@ export default function MaterialRequestsCreate() {
                 isSearchable={false}
               />
 
-
-
               {/* SUBSECTION */}
-
               <Select
                 styles={selectStyles}
                 options={getOptions("stageSubsections")}
@@ -748,10 +755,7 @@ export default function MaterialRequestsCreate() {
                 isSearchable={false}
               />
 
-
-
               {/* COMMENT */}
-
               <input
                 placeholder="Комментарий"
                 value={manual.comment}
@@ -761,10 +765,7 @@ export default function MaterialRequestsCreate() {
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
               />
 
-
-
               {/* BUTTONS */}
-
               <div className="flex justify-end gap-2 pt-2">
 
                 <button
@@ -791,7 +792,6 @@ export default function MaterialRequestsCreate() {
       }
 
       {/* PAGINATION */}
-
       {
         pagination && (
 

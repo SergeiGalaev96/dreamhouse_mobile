@@ -82,20 +82,20 @@ export default function MaterialRequests() {
 
   };
 
-  const initItem = (item, firstEstimateId) => {
+  // const initItem = (item, firstEstimateId) => {
 
-    if (item.item_type !== 2) return item;
+  //   if (item.item_type !== 2) return item;
 
-    return {
-      ...item,
-      currency: item.currency ?? 1,
-      currency_rate: item.currency_rate ?? null,
-      coefficient: item.coefficient ?? null,
-      material_estimate_id:
-        item.material_estimate_id ?? firstEstimateId ?? null
-    };
+  //   return {
+  //     ...item,
+  //     currency: item.currency ?? 1,
+  //     currency_rate: item.currency_rate ?? null,
+  //     coefficient: item.coefficient ?? null,
+  //     material_estimate_id:
+  //       item.material_estimate_id ?? firstEstimateId ?? null
+  //   };
 
-  };
+  // };
 
   const updateItemField = (requestId, itemId, field, value) => {
 
@@ -227,6 +227,13 @@ export default function MaterialRequests() {
 
   }
 
+  const findEstimateByBlock = async () => {
+    const est = dictionaries["materialEstimates"]?.find(x => x.block_id === Number(blockId));
+    const est_id = est.id
+    // console.log("EST ID", est_id)
+    return est_id
+  }
+
   const approveRequest = async (requestId, stage) => {
 
     const request = requests.find(r => r.id === requestId);
@@ -256,18 +263,17 @@ export default function MaterialRequests() {
     }
 
     /* ---------------- ПРОВЕРКА: ПОСЛЕДНИЙ ЭТАП ---------------- */
-
     const isLast = isLastApproval(request, stage);
 
     /* ---------------- CREATE ESTIMATE ITEMS (ТОЛЬКО В КОНЦЕ) ---------------- */
-
     if (isLast) {
 
-      for (const item of request.items.filter(i => i.item_type === 2)) {
+      const material_estimate_id = await findEstimateByBlock()
 
+      for (const item of request.items.filter(i => i.item_type === 2)) {
         const createMEIPayload = [
           {
-            material_estimate_id: item.material_estimate_id,
+            material_estimate_id: material_estimate_id,
             stage_id: item.stage_id,
             subsection_id: item.subsection_id,
             item_type: 1,
@@ -320,13 +326,10 @@ export default function MaterialRequests() {
             return;
           }
         }
-
-
       }
     }
 
     /* ---------------- ПОДПИСЬ ---------------- */
-
     const payload = {
       [getApprovalField(stage)]: true,
       [getUserField(stage)]: user.id
@@ -668,31 +671,7 @@ export default function MaterialRequests() {
                           />
 
                         </div>
-
-                        {/* 🔥 3 СТРОКА — СМЕТА */}
-                        <select
-                          value={item.material_estimate_id || ""}
-                          onChange={(e) =>
-                            updateItemField(
-                              r.id,
-                              item.id,
-                              "material_estimate_id",
-                              Number(e.target.value)
-                            )
-                          }
-                          className="w-full p-2 bg-gray-700 rounded text-xs"
-                        >
-                          {[...(dictionaries.materialEstimates || [])]
-                            .sort((a, b) => a.block_id - b.block_id)
-                            .map(est => (
-                              <option key={est.id} value={est.id}>
-                                {est.label}
-                              </option>
-                            ))}
-                        </select>
-
                       </div>
-
                     )}
                   </div>
                 ))}

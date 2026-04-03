@@ -13,37 +13,23 @@ import { loadDictionaries } from "../utils/dictionaryLoader";
 import { formatDateTime } from "../utils/date";
 import { getRequest } from "../api/request";
 import { useNavigate } from "react-router-dom";
+import { useContext } from "react";
+import { AuthContext } from "../auth/AuthContext";
 
 export default function Profile() {
+  const { user } = useContext(AuthContext);
 
   const navigate = useNavigate();
 
-  const [user, setUser] = useState(null);
   const [dictionaries, setDictionaries] = useState({});
   const [rating, setRating] = useState(null);
 
   /* ---------------- LOAD ---------------- */
 
   useEffect(() => {
-    loadProfile();
+    loadRating();
     loadDicts();
   }, []);
-
-  const loadProfile = async () => {
-    try {
-      const res = await getRequest("/auth/profile");
-      console.log("USER", res)
-      if (res?.success) {
-        setUser(res.data);
-        // 🔥 грузим рейтинг только если supplier
-        if (res.data?.supplier_id) {
-          loadRating(res.data.supplier_id);
-        }
-      }
-    } catch (e) {
-      console.log("PROFILE ERROR", e);
-    }
-  };
 
   const loadDicts = async () => {
     const dicts = await loadDictionaries([
@@ -54,17 +40,19 @@ export default function Profile() {
     setDictionaries(dicts);
   };
 
-  const loadRating = async (supplierId) => {
-    try {
-      const res = await getRequest(
-        `/supplierRating/rating/${supplierId}`
-      );
-      if (res?.success) {
-        setRating(res.data);
+  const loadRating = async () => {
+    console.log("USER", user)
+    if (user.role_id === 13 && user.supplier_id)
+      try {
+        const res = await getRequest(
+          `/supplierRating/rating/${user.supplier_id}`
+        );
+        if (res?.success) {
+          setRating(res.data);
+        }
+      } catch (e) {
+        console.log("RATING ERROR", e);
       }
-    } catch (e) {
-      console.log("RATING ERROR", e);
-    }
   };
 
   /* ---------------- UTILS ---------------- */

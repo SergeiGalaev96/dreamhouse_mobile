@@ -26,5 +26,12 @@ api.interceptors.request.use((config) => {
 console.log("API URL:", API_URL);
 
 export const baseURL = () => api.defaults.baseURL;
+export const socketURL = () => {
+  const currentBaseURL = baseURL();
+
+  if (!currentBaseURL) return "";
+
+  return new URL(currentBaseURL).origin;
+};
 
 export default api;

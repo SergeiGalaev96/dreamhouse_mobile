@@ -159,6 +159,7 @@ export const DictionaryConfig = {
     url: "/users/gets",
     map: (item) => ({
       id: item.id,
+      label: [item.first_name, item.last_name].filter(Boolean).join(" "),
       username: item.username,
       first_name: item.first_name,
       last_name: item.last_name,
@@ -180,5 +181,28 @@ export const DictionaryConfig = {
       label: item.name
     })
   },
+  taskStatuses: {
+    url: "/taskStatuses/gets",
+    map: (item) => ({
+      id: item.id,
+      label: item.name
+    })
+  },
+  taskPriorities: {
+    url: "/taskPriorities/gets",
+    map: (item) => ({
+      id: item.id,
+      label: item.name
+    })
+  },
+  documentStatuses: {
+    url: "/documentStatuses/gets",
+    map: (item) => ({
+      id: item.id,
+      label: item.name
+    })
+  },
+
+
 
 };
