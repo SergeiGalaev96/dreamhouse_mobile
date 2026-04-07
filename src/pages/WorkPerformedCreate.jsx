@@ -29,6 +29,9 @@ export default function WorkPerformedCreate() {
 
   const [showManualModal, setShowManualModal] = useState(false);
 
+  const [showPersonModal, setShowPersonModal] = useState(false);
+  const [performedPersonName, setPerformedPersonName] = useState("");
+
   const [manual, setManual] = useState({
     service_type: null,
     service_id: null,
@@ -279,22 +282,25 @@ export default function WorkPerformedCreate() {
   const createWorkPerformed = async () => {
 
     const items = Object.values(selected);
-    console.log("REQ ITEMS", items)
 
     if (!items.length) return;
+
+    if (!performedPersonName) {
+      toast.error("Укажи исполнителя");
+      return;
+    }
+
     const res = await postRequest("/workPerformed/create", {
       project_id: Number(projectId),
       block_id: Number(blockId),
+      performed_person_name: performedPersonName,
       items
     });
 
-    console.log("RES", res)
-
     if (res.success) {
-      navigate(`/projects/${projectId}/blocks/${blockId}/work-performed`)
-    }
-    else {
-      toast.error(res.message)
+      navigate(`/projects/${projectId}/blocks/${blockId}/work-performed`);
+    } else {
+      toast.error(res.message);
     }
 
   };
@@ -331,7 +337,7 @@ export default function WorkPerformedCreate() {
 
         <button
           disabled={!selectedCount}
-          onClick={createWorkPerformed}
+          onClick={() => setShowPersonModal(true)}
           className="px-4 py-2 rounded-lg text-sm font-medium bg-green-600 hover:bg-green-500 disabled:bg-gray-700"
         >
           Создать ({selectedCount})
@@ -819,6 +825,48 @@ export default function WorkPerformedCreate() {
 
         )
       }
+
+      {showPersonModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[400px] space-y-3">
+
+            <div className="text-sm font-semibold">
+              Исполнитель работ
+            </div>
+
+            <input
+              placeholder="ФИО исполнителя ИП..."
+              value={performedPersonName}
+              onChange={(e) => setPerformedPersonName(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
+            />
+
+            <div className="flex justify-end gap-2 pt-2">
+
+              <button
+                onClick={() => setShowPersonModal(false)}
+                className="px-3 py-1 bg-gray-700 rounded text-sm"
+              >
+                Отмена
+              </button>
+
+              <button
+                onClick={() => {
+                  createWorkPerformed();
+                  setShowPersonModal(false);
+                }}
+                className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-sm"
+              >
+                Создать
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
 
       {/* PAGINATION */}
       {

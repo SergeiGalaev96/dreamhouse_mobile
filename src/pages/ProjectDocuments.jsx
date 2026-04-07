@@ -97,6 +97,7 @@ export default function ProjectDocuments() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyEntity, setHistoryEntity] = useState(null);
   const [historyId, setHistoryId] = useState(null);
+  const canApprove = user?.role_id === 1 || user?.role_id === 2;
 
   const openHistory = (id) => {
     setHistoryEntity("document");
@@ -467,12 +468,14 @@ export default function ProjectDocuments() {
 
         {/* КНОПКИ */}
         <div className="mt-auto flex items-center justify-between px-1 pt-1">
-          <button
-            onClick={() => handleDeleteFile(file.id, documentId)}
-            className="flex items-center justify-center rounded-md bg-red-600/20 p-1.5 text-red-500"
-          >
-            <Trash2 size={16} />
-          </button>
+          {canDelete && (
+            <button
+              onClick={() => handleDeleteFile(file.id, documentId)}
+              className="flex items-center justify-center rounded-md bg-red-600/20 p-1.5 text-red-500"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
 
           <button
             onClick={() => window.open(getFileUrl(file.id), "_blank")}
@@ -502,73 +505,121 @@ export default function ProjectDocuments() {
 
           return (
             <div key={item.id} className="rounded-2xl border border-gray-800 bg-gray-900 px-2 py-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.08)]">
-              <div onClick={() => toggleDocument(item.id)} className="cursor-pointer">
-                <div className="flex items-start justify-between gap-3">
+              <div onClick={() => toggleDocument(item.id)} className="cursor-pointer space-y-2">
 
-                  {/* ЛЕВАЯ ЧАСТЬ */}
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-base font-semibold text-white">
-                      {item.name}
-                    </div>
+                {/* 1️⃣ СТРОКА: дата + статус + кнопки */}
+                <div className="flex items-start justify-between gap-2">
 
-                    <div className="mt-1 text-[11px] text-gray-400">
-                      Создан: {formatDateTime(item.created_at)}
-                    </div>
+                  {/* дата */}
+                  <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                    <span>Создан: {formatDateTime(item.created_at)}</span>
                   </div>
 
-                  {/* ПРАВАЯ ЧАСТЬ */}
-                  <div className="flex flex-col items-end gap-2">
-
-                    {/* КНОПКИ + ЧЕВРОН В ОДНОЙ СТРОКЕ */}
-                    <div className="flex items-center gap-2">
-                      {canDelete && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); deleteDocumentItem(item); }}
-                          className="rounded-xl bg-red-600 p-2.5 hover:bg-red-500"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                  {/* справа кнопки */}
+                  <div className="flex items-center gap-2">
+                    {canDelete && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openHistory(item.id);
-                        }}
-                        className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"
+                        onClick={(e) => { e.stopPropagation(); deleteDocumentItem(item); }}
+                        className="rounded-xl bg-red-600 p-2.5 hover:bg-red-500"
                       >
-                        <Clock size={14} />
+                        <Trash2 size={14} />
                       </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEditDocument(item); }}
-                        className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                    )}
 
-
-
-                      <div className="rounded-xl bg-gray-800 p-2.5">
-                        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </div>
-                    </div>
-
-                    {/* СТАТУС ПРЯМО ПОД КНОПКАМИ */}
-                    <div
-                      className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${getStatusStyle(item.status, dictionaries.documentStatuses)}`}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openHistory(item.id);
+                      }}
+                      className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"
                     >
-                      {getStatusName(item.status)}
-                    </div>
+                      <Clock size={14} />
+                    </button>
 
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEditDocument(item); }}
+                      className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"
+                    >
+                      <Pencil size={14} />
+                    </button>
+
+                    <div className="rounded-xl bg-gray-800 p-2.5">
+                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2️⃣ СТРОКА: название (без truncate) */}
+                <div className="text-base font-semibold text-white break-words">
+                  {item.name}
+                </div>
+
+                {/* 3️⃣ СТРОКА: описание */}
+                {item.description && (
+                  <div className="text-sm text-gray-300 break-words">
+                    {item.description}
+                  </div>
+                )}
+
+                {/* 4️⃣ СТРОКА: цена + дедлайн + статус*/}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-300">
+
+                  <span>
+                    <span className="text-gray-500">Цена:</span>{" "}
+                    {formatMoney(item.price)}
+                  </span>
+
+                  <span>
+                    <span className="text-gray-500">Дедлайн:</span>{" "}
+                    {item.deadline ? formatDate(item.deadline) : "—"}
+                  </span>
+
+                  {/* СТАТУС */}
+                  <div
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${getStatusStyle(item.status, dictionaries.documentStatuses)}`}
+                  >
+                    {getStatusName(item.status)}
                   </div>
 
                 </div>
-                {item.description && <div className="mt-2 line-clamp-2 text-sm text-gray-300">{item.description}</div>}
-                <div className="mt-2 flex flex-wrap gap-2 text-[12px] text-gray-300">
-                  <div className="rounded-lg bg-gray-950/80 px-3 py-1.5 leading-none">{formatMoney(item.price)}</div>
-                  <div className="rounded-lg bg-gray-950/80 px-3 py-1.5 leading-none">{item.deadline ? formatDate(item.deadline) : "—"}</div>
-                  <div className="max-w-full truncate rounded-lg bg-gray-950/80 px-3 py-1.5 leading-none">{getUserNames(item.responsible_users)}</div>
+
+                {/* 5️⃣ СТРОКА: ответственные */}
+                <div className="rounded-lg bg-gray-950/80 px-3 py-1.5 text-[11px] leading-snug text-gray-300 whitespace-normal break-words">
+                  <div className="text-[10px] text-gray-500 mb-0.5">
+                    Ответственные
+                  </div>
+                  {getUserNames(item.responsible_users)}
                 </div>
+                {canApprove && (
+                  <div className="mt-2 flex items-center justify-between gap-2">
+
+                    {/* ОТКЛОНИТЬ */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReject(item);
+                      }}
+                      className="flex-1 rounded-lg bg-red-600/20 px-3 py-2 text-xs text-red-400 hover:bg-red-600/30"
+                    >
+                      Отклонить
+                    </button>
+
+                    {/* ПОДПИСАТЬ */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleApprove(item);
+                      }}
+                      className="flex-1 rounded-lg bg-green-600/20 px-3 py-2 text-xs text-green-400 hover:bg-green-600/30"
+                    >
+                      Подписать
+                    </button>
+
+                  </div>
+                )}
+
               </div>
+
               {expanded && (
                 <div className="mt-3 rounded-2xl border border-gray-800 bg-gray-950/70 p-2.5">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -577,7 +628,10 @@ export default function ProjectDocuments() {
                   </div>
                   {loadingFilesId === item.id && <div className="text-xs text-gray-500">Загрузка файлов...</div>}
                   {!loadingFilesId && files.length === 0 && <div className="rounded-lg border border-dashed border-gray-800 bg-gray-900/60 p-4 text-center text-xs text-gray-500">Файлы ещё не добавлены</div>}
-                  {!loadingFilesId && files.length > 0 && <div className="grid grid-cols-3 gap-2">{files.map((file) => { const imageIndex = isImageFile(file) ? ++imageCounter : -1; return renderFileTile(file, files, imageIndex, item.id); })}</div>}
+                  {!loadingFilesId && files.length > 0 &&
+                    <div className="grid grid-cols-3 gap-2">
+                      {files.map((file) => { const imageIndex = isImageFile(file) ? ++imageCounter : -1; return renderFileTile(file, files, imageIndex, item.id); })}
+                    </div>}
                 </div>
               )}
             </div>
@@ -586,6 +640,17 @@ export default function ProjectDocuments() {
       </div>
     </div>
   );
+
+  const handleApprove = (item) => {
+    console.log("approve", item.id);
+    // API сюда
+  };
+
+  const handleReject = (item) => {
+    console.log("reject", item.id);
+    // API сюда
+  };
+
   return (
     <div className="space-y-4 pb-24 text-white">
       <div className="flex items-center gap-2"><Briefcase size={20} className="text-blue-400" /><h1 className="text-lg font-semibold">Юр отдел: {projectName}</h1></div>
@@ -608,25 +673,78 @@ export default function ProjectDocuments() {
         </div>
 
         {loadingStages ? <div className="text-sm text-gray-400">Загрузка этапов...</div> : stages.length === 0 ? <div className="text-sm text-gray-400">Этапы ещё не добавлены.</div> : (
-          <div className="space-y-4">{stages.map((stage) => {
-            const expanded = expandedStageId === stage.id; return (
-              <div key={stage.id} className="rounded-2xl border border-gray-800 bg-gray-900 px-3 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div onClick={() => setExpandedStageId(expanded ? null : stage.id)} className="flex cursor-pointer items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1"><div className="text-base font-semibold text-white">{stage.name}</div><div className="mt-1 text-[11px] text-gray-500">Создан: {formatDateTime(stage.created_at)}</div></div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      {canDelete &&
-                        <button onClick={(e) => { e.stopPropagation(); deleteStageItem(stage); }} className="rounded-xl bg-red-600 p-2.5 hover:bg-red-500"><Trash2 size={14} /></button>
-                      }
-                      <button onClick={(e) => { e.stopPropagation(); openEditStage(stage); }} className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"><Pencil size={14} /></button>
+          <div className="space-y-4">
+            {stages.map((stage) => {
+              const expanded = expandedStageId === stage.id;
+
+              return (
+                <div
+                  key={stage.id}
+                  className="rounded-2xl border border-gray-800 bg-gray-900 px-3 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]"
+                >
+                  <div
+                    onClick={() => setExpandedStageId(expanded ? null : stage.id)}
+                    className="flex cursor-pointer items-start justify-between gap-3"
+                  >
+
+                    {/* ЛЕВАЯ ЧАСТЬ */}
+                    <div className="min-w-0 flex-1">
+
+                      {/* 1️⃣ дата сверху */}
+                      <div className="text-[11px] text-gray-500">
+                        Создан: {formatDateTime(stage.created_at)}
+                      </div>
+
+                      {/* 2️⃣ название ниже */}
+                      <div className="mt-1 text-base font-semibold text-white break-words">
+                        {stage.name}
+                      </div>
+
                     </div>
-                    <div className="rounded-xl bg-gray-800 p-2.5">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</div>
+
+                    {/* ПРАВАЯ ЧАСТЬ */}
+                    <div className="flex items-center gap-3">
+
+                      <div className="flex items-center gap-2">
+                        {canDelete && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteStageItem(stage);
+                            }}
+                            className="rounded-xl bg-red-600 p-2.5 hover:bg-red-500"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditStage(stage);
+                          }}
+                          className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      </div>
+
+                      <div className="rounded-xl bg-gray-800 p-2.5">
+                        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </div>
+
+                    </div>
                   </div>
+
+                  {expanded && (
+                    <div className="mt-3 -mx-1">
+                      {renderDocumentsList(stage.id)}
+                    </div>
+                  )}
                 </div>
-                {expanded && <div className="mt-3 -mx-1">{renderDocumentsList(stage.id)}</div>}
-              </div>
-            );
-          })}</div>
+              );
+            })}
+          </div>
         )}
         {stagePagination && stagePagination.pages > 1 && <div className="mt-4 flex justify-center gap-3"><button disabled={!stagePagination.hasPrev} onClick={() => setStagePage((prev) => prev - 1)} className="rounded-lg bg-gray-800 px-3 py-1 text-sm disabled:opacity-50">Prev</button><span className="text-sm text-gray-400">{stagePagination.page} / {stagePagination.pages}</span><button disabled={!stagePagination.hasNext} onClick={() => setStagePage((prev) => prev + 1)} className="rounded-lg bg-gray-800 px-3 py-1 text-sm disabled:opacity-50">Next</button></div>}
 
