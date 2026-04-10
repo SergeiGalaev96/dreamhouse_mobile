@@ -1,5 +1,13 @@
 import { createContext, useState, useEffect } from "react";
 import { getRequest } from "../api/request";
+import {
+  clearBiometricToken,
+  getAuthToken,
+  removeAuthToken,
+  saveBiometricToken,
+  setAuthToken,
+  unlockBiometricToken
+} from "../utils/authStorage";
 
 export const AuthContext = createContext();
 
@@ -10,23 +18,41 @@ export const AuthProvider = ({ children }) => {
 
   const login = (userData, token) => {
 
-    localStorage.setItem("token", token);
+    setAuthToken(token);
+    saveBiometricToken(token).catch((error) => {
+      console.warn("biometric token save failed", error);
+    });
     setUser(userData);
 
   };
 
-  const logout = () => {
+  const logout = async () => {
 
-    localStorage.removeItem("token");
+    removeAuthToken();
+    await clearBiometricToken();
     setUser(null);
 
     window.location.href = "/login";
 
   };
 
+  const loginWithBiometrics = async () => {
+
+    await unlockBiometricToken();
+    const res = await getRequest("/auth/profile");
+
+    if (!res.success) {
+      throw new Error(res.message || "Profile restore failed");
+    }
+
+    setUser(res.data);
+    return res.data;
+
+  };
+
   const loadProfile = async () => {
 
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
 
     if (!token) {
       setLoading(false);
@@ -43,7 +69,7 @@ export const AuthProvider = ({ children }) => {
 
     } catch (e) {
       console.log("Auth restore failed");
-      localStorage.removeItem("token");
+      removeAuthToken();
     }
 
     setLoading(false);
@@ -55,7 +81,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, loginWithBiometrics, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );

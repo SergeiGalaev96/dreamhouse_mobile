@@ -4,6 +4,7 @@ import { postRequest } from "../api/request";
 import { formatDateTime } from "../utils/date";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { Warehouse, Search } from "lucide-react";
+import PullToRefresh from "../components/PullToRefresh";
 
 export default function Warehouses() {
   const navigate = useNavigate();
@@ -100,6 +101,7 @@ export default function Warehouses() {
       </div>
 
       {/* LIST */}
+      <PullToRefresh className="space-y-2.5" onRefresh={loadWarehouses}>
       {warehouses.map(w => {
 
         const totalSum = w.items?.reduce((acc, i) => acc + (i.summ || 0), 0);
@@ -138,6 +140,7 @@ export default function Warehouses() {
         );
 
       })}
+      </PullToRefresh>
 
       {/* PAGINATION */}
       <div className="flex justify-center gap-3 mt-6">

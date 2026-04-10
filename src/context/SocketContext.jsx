@@ -1,11 +1,17 @@
 import { useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { AuthContext } from "../auth/AuthContext";
-import { socketURL } from "../api/axios";
+import { socketFallbackURLs } from "../api/axios";
 import { SocketContext } from "./socket-context";
+import { getAuthToken } from "../utils/authStorage";
+
+const registerSocketUser = (socket, userId) => {
+  socket.emit("register", userId, (response) => {
+    console.log("socket register", response);
+  });
+};
 
 export const SocketProvider = ({ children }) => {
-
   const { user } = useContext(AuthContext);
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
@@ -13,34 +19,67 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (!user) return;
 
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) return;
 
-    const nextSocket = io(socketURL(), {
-      auth: { token },
-      transports: ["websocket"]
-    });
+    const urls = socketFallbackURLs();
+    let disposed = false;
+    let activeSocket = null;
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSocket(nextSocket);
+    const connectSocket = (urlIndex = 0) => {
+      const socketUrl = urls[urlIndex];
 
-    nextSocket.on("connect", () => {
-      console.log("🟢 socket connected", nextSocket.id);
+      if (!socketUrl) {
+        console.error("socket connect error: no more fallback URLs", urls);
+        return;
+      }
 
-      nextSocket.emit("register", user.id);
-      setConnected(true);
-    });
+      console.log("socket connecting", socketUrl);
 
-    nextSocket.on("disconnect", () => {
-      setConnected(false);
-    });
+      const nextSocket = io(socketUrl, {
+        auth: { token },
+        transports: ["polling", "websocket"],
+        reconnection: true,
+        reconnectionAttempts: 2,
+        timeout: 5000
+      });
+
+      activeSocket = nextSocket;
+
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSocket(nextSocket);
+
+      nextSocket.on("connect", () => {
+        console.log("socket connected", socketUrl, nextSocket.id);
+
+        registerSocketUser(nextSocket, user.id);
+        setConnected(true);
+      });
+
+      nextSocket.on("connect_error", (error) => {
+        console.error("socket connect error", socketUrl, error.message);
+
+        if (!disposed && !nextSocket.connected && urls[urlIndex + 1]) {
+          console.warn("socket fallback", urls[urlIndex + 1]);
+          nextSocket.disconnect();
+          connectSocket(urlIndex + 1);
+        }
+      });
+
+      nextSocket.on("disconnect", (reason) => {
+        console.log("socket disconnected", socketUrl, reason);
+        setConnected(false);
+      });
+    };
+
+    connectSocket();
 
     return () => {
-      nextSocket.disconnect();
+      disposed = true;
+      activeSocket?.disconnect();
       setSocket(null);
       setConnected(false);
     };
-
   }, [user]);
 
   return (

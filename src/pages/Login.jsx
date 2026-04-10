@@ -1,45 +1,84 @@
-import { useState, useContext } from "react";
-import { AuthContext } from "../auth/AuthContext";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { postRequest, putRequest } from "../api/request";
 import toast from "react-hot-toast";
 import { Eye, EyeOff } from "lucide-react";
+import { AuthContext } from "../auth/AuthContext";
+import { postRequest, putRequest } from "../api/request";
+import {
+  isBiometricAvailable,
+  isBiometricLoginEnabled,
+  setAuthToken
+} from "../utils/authStorage";
 
 export default function Login() {
-
-  const { login: setAuth } = useContext(AuthContext);
+  const { login: setAuth, loginWithBiometrics } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [username, setUsername] = useState("dev");
   const [password, setPassword] = useState("123");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const biometricAttemptedRef = useRef(false);
 
   const [showResetModal, setShowResetModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
 
-  const handleLogin = async () => {
+  const handleBiometricLogin = useCallback(async ({ silent = false } = {}) => {
+    setLoading(true);
 
+    try {
+      await loginWithBiometrics();
+      navigate("/projects");
+    } catch (e) {
+      if (!silent) {
+        toast.error(e?.message || "Не удалось войти по биометрии");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [loginWithBiometrics, navigate]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkBiometrics = async () => {
+      const enabled = isBiometricLoginEnabled();
+      const available = enabled && await isBiometricAvailable();
+
+      if (!mounted) return;
+
+      setBiometricAvailable(available);
+
+      if (available && !biometricAttemptedRef.current) {
+        biometricAttemptedRef.current = true;
+        handleBiometricLogin({ silent: true });
+      }
+    };
+
+    checkBiometrics();
+
+    return () => {
+      mounted = false;
+    };
+  }, [handleBiometricLogin]);
+
+  const handleLogin = async () => {
     if (!username.trim()) return toast.error("Введите логин");
     if (!password.trim()) return toast.error("Введите пароль");
 
     setLoading(true);
 
     try {
-
       const res = await postRequest("/auth/login", {
         username,
         password
       });
 
       if (res.success) {
+        setAuthToken(res.token);
 
-        // console.log("LOGIN", res)
-
-        localStorage.setItem("token", res.token);
-
-        // 🔥 если требуется смена пароля
         if (res.data?.required_action === "RESET_PASSWORD") {
           setShowResetModal(true);
           return;
@@ -47,22 +86,17 @@ export default function Login() {
 
         setAuth(res.data, res.token);
         navigate("/projects");
-
       } else {
         toast.error(res.message || "Ошибка авторизации");
       }
-
     } catch (e) {
       toast.error(e?.response?.data?.message || "Ошибка сервера");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
-  /* ---------------- RESET PASSWORD ---------------- */
-
   const handleResetPassword = async () => {
-
     if (!newPassword.trim()) {
       toast.error("Введите новый пароль");
       return;
@@ -73,45 +107,40 @@ export default function Login() {
       return;
     }
 
-    try {
-      console.log("P", password)
+    setLoading(true);
 
+    try {
       const res = await putRequest("/users/changeOwnPassword", {
         oldPassword: password,
-        newPassword: newPassword
+        newPassword
       });
 
-      if (res.success) {
-
-        toast.success("Пароль обновлен");
-
-        // 🔥 сразу логиним
-        const loginRes = await postRequest("/auth/login", {
-          username,
-          password: newPassword
-        });
-
-        if (loginRes.success) {
-          setAuth(loginRes.data, loginRes.token);
-          navigate("/projects");
-        }
-
-      } else {
+      if (!res.success) {
         toast.error(res.message || "Ошибка смены пароля");
+        return;
       }
 
+      toast.success("Пароль обновлен");
+
+      const loginRes = await postRequest("/auth/login", {
+        username,
+        password: newPassword
+      });
+
+      if (loginRes.success) {
+        setAuth(loginRes.data, loginRes.token);
+        navigate("/projects");
+      }
     } catch (e) {
       toast.error(e?.response?.data?.message || "Ошибка сервера");
+    } finally {
+      setLoading(false);
     }
-
   };
 
   return (
-
     <div className="min-h-screen flex items-center justify-center bg-gray-900">
-
       <div className="w-full max-w-sm bg-gray-800 p-8 rounded-2xl shadow-lg">
-
         <h1 className="text-2xl font-bold text-white mb-6 text-center">
           DreamHouse
         </h1>
@@ -124,7 +153,6 @@ export default function Login() {
         />
 
         <div className="relative mb-6">
-
           <input
             type={showPassword ? "text" : "password"}
             value={password}
@@ -140,7 +168,6 @@ export default function Login() {
           >
             {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
           </div>
-
         </div>
 
         <button
@@ -151,14 +178,20 @@ export default function Login() {
           {loading ? "Загрузка..." : "Вход"}
         </button>
 
+        {biometricAvailable && (
+          <button
+            onClick={handleBiometricLogin}
+            disabled={loading}
+            className="w-full mt-3 bg-gray-700 hover:bg-gray-600 text-white p-3 rounded-lg"
+          >
+            Войти по биометрии
+          </button>
+        )}
       </div>
 
-      {/* 🔥 RESET PASSWORD MODAL */}
       {showResetModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[350px] space-y-4">
-
             <h2 className="text-lg font-semibold text-white">
               Смена пароля
             </h2>
@@ -181,18 +214,14 @@ export default function Login() {
 
             <button
               onClick={handleResetPassword}
-              className="w-full bg-green-600 hover:bg-green-500 p-3 rounded text-white"
+              disabled={loading}
+              className="w-full bg-green-600 hover:bg-green-500 p-3 rounded text-white disabled:opacity-50"
             >
               Сохранить
             </button>
-
           </div>
-
         </div>
       )}
-
     </div>
-
   );
-
 }

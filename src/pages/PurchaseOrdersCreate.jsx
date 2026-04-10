@@ -1,20 +1,49 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { getRequest, postRequest } from "../api/request";
-import { loadDictionaries } from "../utils/dictionaryLoader";
-import { numberHandler } from "../utils/numberInput";
+import { useNavigate, useParams } from "react-router-dom";
 import Select from "react-select";
-import { selectStyles } from "../utils/selectStyles";
-import { formatDateReverse } from "../utils/date";
-import { Search, FolderKanban, Plus } from "lucide-react";
 import toast from "react-hot-toast";
+import { FolderKanban, Search } from "lucide-react";
+import { getRequest, postRequest } from "../api/request";
+import { useTheme } from "../context/ThemeContext";
+import { loadDictionaries } from "../utils/dictionaryLoader";
+import { formatDateReverse } from "../utils/date";
+import { numberHandler } from "../utils/numberInput";
+import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
 
+const getSelectStyles = (isDark) => ({
+  control: (base, state) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff",
+    borderColor: state.isFocused ? "#3b82f6" : isDark ? "#374151" : "#cbd5e1",
+    boxShadow: "none",
+    minHeight: 42
+  }),
+  menu: (base) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff",
+    border: `1px solid ${isDark ? "#374151" : "#cbd5e1"}`
+  }),
+  menuList: (base) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff"
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused ? (isDark ? "#374151" : "#e2e8f0") : isDark ? "#111827" : "#ffffff",
+    color: isDark ? "#f9fafb" : "#0f172a",
+    cursor: "pointer"
+  }),
+  singleValue: (base) => ({ ...base, color: isDark ? "#f9fafb" : "#0f172a" }),
+  placeholder: (base) => ({ ...base, color: isDark ? "#9ca3af" : "#64748b" }),
+  input: (base) => ({ ...base, color: isDark ? "#f9fafb" : "#0f172a" }),
+  dropdownIndicator: (base) => ({ ...base, color: isDark ? "#9ca3af" : "#64748b" }),
+  indicatorSeparator: () => ({ display: "none" })
+});
 
-
-export default function PurchaseOrders() {
-
+export default function PurchaseOrdersCreate() {
   const { projectId, blockId } = useParams();
   const navigate = useNavigate();
+  const { isDark } = useTheme();
 
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState({});
@@ -22,17 +51,16 @@ export default function PurchaseOrders() {
   const [dictionaries, setDictionaries] = useState({});
   const [rates, setRates] = useState([]);
   const [recommendedSuppliers, setRecommendedSuppliers] = useState({});
-
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
-  const [size] = useState(10);
-  const [total, setTotal] = useState(0);
-
   const [search, setSearch] = useState("");
   const [inputSearch, setInputSearch] = useState("");
 
-
-  /* ---------------- LOAD ---------------- */
+  const pageClass = `space-y-3 pb-24 ${themeText.page(isDark)}`;
+  const inputClass = themeControl.input(isDark);
+  const panelClass = `${themeSurface.panel(isDark)} rounded-xl p-3 transition`;
+  const subtleButtonClass = themeControl.subtleButton(isDark);
+  const modalInputClass = themeControl.modalInput(isDark);
 
   useEffect(() => {
     loadRequestItems();
@@ -44,32 +72,22 @@ export default function PurchaseOrders() {
   }, []);
 
   const loadRequestItems = async () => {
-
     const payload = {
       project_id: Number(projectId),
       block_id: Number(blockId),
       search,
       page,
       size: 20,
-      material_name: search
+      material_name: search,
+      statuses: [2, 3]
     };
 
-    // 🔥 добавляем фильтр по роли
-    // if (user.role_id === 7) {
-    payload.statuses = [2, 3];
-    // }
-
-    const res = await postRequest(
-      "/materialRequestItems/search",
-      payload
-    );
+    const res = await postRequest("/materialRequestItems/search", payload);
 
     if (res.success) {
       setItems(res.data);
-      setTotal(res.pagination.total || 0);
       setPagination(res.pagination);
     }
-
   };
 
   const loadDicts = async () => {
@@ -84,63 +102,45 @@ export default function PurchaseOrders() {
   };
 
   const loadRates = async () => {
-
-    const res = await getRequest(
-      "/currencyRates/getByDate/" + formatDateReverse(new Date())
-    );
-
+    const res = await getRequest(`/currencyRates/getByDate/${formatDateReverse(new Date())}`);
     if (res.success) {
       setRates(res.data);
     }
-
   };
 
-  /* ---------------- HELPERS ---------------- */
-  const getDictName = (dictName, id, field = "label") => {
-    return dictionaries[dictName]?.find(x => x.id === Number(id))?.[field] || "";
-  };
+  const getDictName = (dictName, id, field = "label") =>
+    dictionaries[dictName]?.find((item) => item.id === Number(id))?.[field] || "";
 
   const miStatusStyles = {
-    1: "bg-gray-500/10 text-gray-400",       // Создан
-    2: "bg-yellow-500/10 text-yellow-400",   // Одобрено
-    3: "bg-blue-500/10 text-blue-400",       // Частично заказано
-    4: "bg-green-500/10 text-green-400",     // Полностью заказано
-    5: "bg-red-500/10 text-red-400"          // Отменено
+    1: "bg-gray-500/10 text-gray-400",
+    2: "bg-yellow-500/10 text-yellow-400",
+    3: "bg-blue-500/10 text-blue-400",
+    4: "bg-green-500/10 text-green-400",
+    5: "bg-red-500/10 text-red-400"
   };
 
   const getRateByCurrency = (currencyId) => {
-    const rate = rates.find(r => r.currency_id === currencyId);
+    const rate = rates.find((item) => item.currency_id === currencyId);
     return rate?.rate || "";
   };
 
-  /* ---------------- SUPPLIERS ---------------- */
-
   const loadRecommendedSuppliers = async (itemId, materialId, currency) => {
-    console.log("CC", currency)
     if (recommendedSuppliers[materialId]) return;
 
     const res = await getRequest(`/suppliers/recommend/${materialId}/${currency ?? 1}`);
 
     if (res.success) {
-
       const suppliers = res.data;
 
-      setRecommendedSuppliers(prev => ({
+      setRecommendedSuppliers((prev) => ({
         ...prev,
         [materialId]: suppliers
       }));
 
-      // 🔥 ставим первого поставщика
       if (suppliers.length) {
-
-        setSelected(prev => {
-
+        setSelected((prev) => {
           const current = prev[itemId];
-
-          if (!current) return prev;
-          if (current.supplier_id) return prev;
-
-          console.log("BB", suppliers[0])
+          if (!current || current.supplier_id) return prev;
 
           return {
             ...prev,
@@ -171,29 +171,26 @@ export default function PurchaseOrders() {
   const getSupplierOptions = (materialId) => {
     const recommended = recommendedSuppliers[materialId] || [];
 
-    return recommended.map(s => ({
-      value: s.id,
+    return recommended.map((supplier) => ({
+      value: supplier.id,
       label: (
-        <div className="flex justify-between w-full">
-          <span>{s.name}</span>
-          <span className="text-yellow-400 text-xs">
-            {renderStars(s.avg_rating)}
-          </span>
+        <div className="flex w-full justify-between">
+          <span>{supplier.name}</span>
+          <span className="text-xs text-yellow-400">{renderStars(supplier.avg_rating)}</span>
         </div>
       )
     }));
   };
 
-  /* ---------------- OPTIONS ---------------- */
   const getOptions = (dictName, fields = []) => {
-    const items = dictionaries[dictName];
-    if (!items) return [];
+    const itemsList = dictionaries[dictName];
+    if (!itemsList) return [];
 
-    return items.map(item => {
+    return itemsList.map((item) => {
       const extra = {};
 
-      fields.forEach(f => {
-        extra[f] = item[f];
+      fields.forEach((field) => {
+        extra[field] = item[field];
       });
 
       return {
@@ -204,12 +201,8 @@ export default function PurchaseOrders() {
     });
   };
 
-  /* ---------------- LOGIC ---------------- */
   const toggleItem = (item) => {
-    console.log("CH", item)
-
-    setSelected(prev => {
-
+    setSelected((prev) => {
       if (prev[item.id]) {
         const copy = { ...prev };
         delete copy[item.id];
@@ -228,13 +221,11 @@ export default function PurchaseOrders() {
           comment: ""
         }
       };
-
     });
-
   };
 
   const updateField = (id, field, value) => {
-    setSelected(prev => ({
+    setSelected((prev) => ({
       ...prev,
       [id]: {
         ...prev[id],
@@ -244,27 +235,22 @@ export default function PurchaseOrders() {
   };
 
   const createPurchase = async () => {
-
     const rawItems = Object.values(selected);
-
-    console.log("ORDER", rawItems)
 
     if (!rawItems.length) {
       toast.error("Выбери хотя бы один материал");
       return;
     }
 
-    const items = [];
+    const purchaseItems = [];
 
     for (const item of rawItems) {
-
       const quantity = Number(item.quantity);
       const price = Number(item.price);
       const currency = item.currency;
       const supplier = item.supplier_id;
       const rate = Number(item.currency_rate);
 
-      // 🔥 проверки
       if (!quantity || quantity <= 0) {
         toast.error("Укажи количество");
         return;
@@ -285,17 +271,15 @@ export default function PurchaseOrders() {
         return;
       }
 
-      // 🔥 курс обязателен если НЕ сом
       if (currency !== 1 && (!rate || rate <= 0)) {
         toast.error("Укажи курс валюты");
         return;
       }
 
       const finalRate = currency === 1 ? null : rate;
-
       const summ = quantity * price;
 
-      items.push({
+      purchaseItems.push({
         material_request_item_id: item.id,
         material_type: item.material_type,
         material_id: item.material_id,
@@ -311,41 +295,38 @@ export default function PurchaseOrders() {
 
     const payload = {
       project_id: Number(projectId),
-      block_id: Number(rawItems[0]?.block_id || 1), // подстрой если нужно
-      created_user_id: 1, // потом заменишь на user.id
-      items
+      block_id: Number(rawItems[0]?.block_id || 1),
+      created_user_id: 1,
+      items: purchaseItems
     };
 
-    console.log("ORDER", payload);
+    const res = await postRequest("/purchaseOrders/create", payload);
 
-    const res = await postRequest('/purchaseOrders/create', payload);
-
-    if (res.success == true) {
+    if (res.success === true) {
       toast.success("Заявка создана!");
-      navigate(`/projects/${projectId}/blocks/${blockId}/purchase-orders`)
-    }
-    else {
-      toast.error(res.message)
+      navigate(`/projects/${projectId}/blocks/${blockId}/purchase-orders`);
+    } else {
+      toast.error(res.message);
     }
   };
 
-  /* ---------------- UI ---------------- */
   return (
+    <div className={pageClass}>
+      <div className="flex items-center gap-2">
+        <FolderKanban size={20} className="text-blue-400" />
+        <h1 className="text-lg font-semibold">
+          Создать закуп: {getDictName("projectBlocks", blockId)}
+        </h1>
+      </div>
 
-    <div className="space-y-3 text-white pb-24">
-      <h1 className="text-lg font-semibold">
-        Создать закуп: {getDictName("projectBlocks", blockId)}
-      </h1>
-
-      {/* SEARCH */}
-      <div className="flex gap-2 mb-4">
+      <div className="mb-4 flex gap-2">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-3 text-gray-400" />
+          <Search size={16} className={`absolute left-3 top-3 ${themeText.secondary(isDark)}`} />
           <input
             value={inputSearch}
             onChange={(e) => setInputSearch(e.target.value)}
             placeholder="Поиск материалов..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg bg-gray-900 border border-gray-800 text-sm"
+            className={inputClass}
           />
         </div>
 
@@ -354,25 +335,29 @@ export default function PurchaseOrders() {
             setPage(1);
             setSearch(inputSearch);
           }}
-          className="px-4 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm"
+          className="rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500"
         >
           Go
         </button>
-
       </div>
 
-      {items.map(item => {
+      {items.map((item) => {
         const checked = !!selected[item.id];
         const expanded = expandedId === item.id;
+
         return (
           <div
             key={item.id}
-            className={`bg-gray-900 border rounded-xl p-3 transition
-              ${checked ? "border-green-500" : "border-gray-800"}
-            `}
+            className={`${panelClass} ${
+              checked
+                ? isDark
+                  ? "border-green-500"
+                  : "border-green-500 bg-green-50"
+                : isDark
+                  ? "border-gray-800"
+                  : "border-slate-200"
+            }`}
           >
-
-            {/* HEADER */}
             <div
               onClick={() => {
                 setExpandedId(expanded ? null : item.id);
@@ -381,53 +366,43 @@ export default function PurchaseOrders() {
                   loadRecommendedSuppliers(item.id, item.material_id, item.currency);
                 }
               }}
-              className="flex justify-between items-start cursor-pointer"
+              className="flex cursor-pointer items-start justify-between"
             >
-
-              {/* LEFT */}
               <div className="flex flex-col">
-
-                <span className="text-sm font-semibold">
+                <span className={`text-sm font-semibold ${themeText.title(isDark)}`}>
                   {getDictName("materials", item.material_id)}
                 </span>
 
-                <span className="text-xs text-gray-400">
+                <span className={`text-xs ${themeText.secondary(isDark)}`}>
                   Остаток: {item.remaining_quantity}{" "}
                   {getDictName("unitsOfMeasure", item.unit_of_measure)}
                 </span>
-
               </div>
 
-              {/* RIGHT */}
               <div className="flex flex-col items-end gap-1">
-
                 <input
                   type="checkbox"
                   checked={checked}
                   onClick={(e) => e.stopPropagation()}
                   onChange={() => toggleItem(item)}
-                  className="w-5 h-5 accent-green-500"
+                  className="h-5 w-5 accent-green-500"
                 />
 
-                <span className={`text-[11px] px-2 py-[3px] rounded whitespace-nowrap ${miStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"}`}
+                <span
+                  className={`whitespace-nowrap rounded px-2 py-[3px] text-[11px] ${
+                    miStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"
+                  }`}
                 >
                   {getDictName("materialRequestItemStatuses", item.status)}
                 </span>
               </div>
-
             </div>
 
-            {/* DETAILS */}
             {checked && expanded && (
-
               <div className="mt-3 space-y-3">
-
                 <div className="flex gap-2">
-
-                  {/* КОЛИЧЕСТВО */}
                   <div className="relative flex-1">
-
-                    <span className="absolute left-2 top-1 text-[10px] text-gray-400">
+                    <span className={`absolute left-2 top-1 text-[10px] ${themeText.secondary(isDark)}`}>
                       Кол-во
                     </span>
 
@@ -436,34 +411,26 @@ export default function PurchaseOrders() {
                       inputMode="decimal"
                       placeholder="Количество..."
                       value={selected[item.id]?.quantity ?? ""}
-                      onChange={numberHandler((val) =>
-                        updateField(item.id, "quantity", val)
-                      )}
-                      className="w-full pt-4 pb-2 px-2 bg-gray-800 rounded text-sm"
+                      onChange={numberHandler((value) => updateField(item.id, "quantity", value))}
+                      className={`${modalInputClass} px-2 pb-2 pt-4`}
                     />
-
                   </div>
 
-                  {/* ЕД ИЗМ */}
                   <div className="w-24">
                     <Select
-                      styles={selectStyles}
+                      styles={getSelectStyles(isDark)}
                       options={getOptions("unitsOfMeasure")}
                       value={getOptions("unitsOfMeasure").find(
-                        u => u.value === selected[item.id].unit_of_measure
+                        (unit) => unit.value === selected[item.id].unit_of_measure
                       )}
-                      onChange={(v) =>
-                        updateField(item.id, "unit_of_measure", v?.value)
-                      }
+                      onChange={(value) => updateField(item.id, "unit_of_measure", value?.value)}
                       placeholder="Ед."
                       isSearchable={false}
                     />
                   </div>
 
-                  {/* ЦЕНА */}
                   <div className="relative w-28">
-
-                    <span className="absolute left-2 top-1 text-[10px] text-gray-400">
+                    <span className={`absolute left-2 top-1 text-[10px] ${themeText.secondary(isDark)}`}>
                       Цена
                     </span>
 
@@ -472,146 +439,99 @@ export default function PurchaseOrders() {
                       inputMode="decimal"
                       placeholder="Цена..."
                       value={selected[item.id]?.price ?? ""}
-                      onChange={numberHandler((val) =>
-                        updateField(item.id, "price", val)
-                      )}
-                      className="w-full pt-4 pb-2 px-2 bg-gray-800 rounded text-sm"
+                      onChange={numberHandler((value) => updateField(item.id, "price", value))}
+                      className={`${modalInputClass} px-2 pb-2 pt-4`}
                     />
-
-                    {/* <input
-                      type="number"
-                      value={selected[item.id].price}
-                      onChange={(e) =>
-                        updateField(item.id, "price", e.target.value)
-                      }
-                      className="w-full pt-4 pb-2 px-2 bg-gray-800 rounded text-sm"
-                    /> */}
-
                   </div>
-
                 </div>
 
                 <div className="flex gap-2">
-
-                  {/* ВАЛЮТА */}
                   <div className="flex-1">
                     <Select
-                      styles={selectStyles}
+                      styles={getSelectStyles(isDark)}
                       options={getOptions("currencies")}
                       value={getOptions("currencies").find(
-                        c => c.value === selected[item.id].currency
+                        (currency) => currency.value === selected[item.id].currency
                       )}
-                      onChange={(v) => {
-                        const currencyId = v?.value;
-
+                      onChange={(value) => {
+                        const currencyId = value?.value;
                         updateField(item.id, "currency", currencyId);
-
-                        const rate = getRateByCurrency(currencyId);
-                        updateField(item.id, "currency_rate", rate);
+                        updateField(item.id, "currency_rate", getRateByCurrency(currencyId));
                       }}
                       placeholder="Валюта"
                       isSearchable={false}
                     />
                   </div>
 
-                  {/* КУРС */}
-                  {selected[item.id].currency !== 1 &&
-                    selected[item.id].currency !== null && (
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="Курс..."
-                        value={selected[item.id]?.currency_rate ?? ""}
-                        onChange={numberHandler((val) =>
-                          updateField(item.id, "currency_rate", val)
-                        )}
-                        className="w-28 p-2 bg-gray-800 rounded text-sm"
-                      />
-                      // <input
-                      //   type="number"
-                      //   value={selected[item.id].currency_rate}
-                      //   onChange={(e) =>
-                      //     updateField(item.id, "currency_rate", e.target.value)
-                      //   }
-                      //   className="w-28 p-2 bg-gray-800 rounded text-sm"
-                      //   placeholder="Курс"
-                      // />
-                    )}
-
+                  {selected[item.id].currency !== 1 && selected[item.id].currency !== null && (
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Курс..."
+                      value={selected[item.id]?.currency_rate ?? ""}
+                      onChange={numberHandler((value) =>
+                        updateField(item.id, "currency_rate", value)
+                      )}
+                      className={`${modalInputClass} w-28`}
+                    />
+                  )}
                 </div>
 
-
-                {/* ПОСТАВЩИК */}
                 <Select
-                  styles={selectStyles}
+                  styles={getSelectStyles(isDark)}
                   options={getSupplierOptions(item.material_id)}
                   value={
                     getSupplierOptions(item.material_id).find(
-                      s => s.value === selected[item.id].supplier_id
-                    ) || getSupplierOptions(item.material_id)[0] || null
+                      (supplier) => supplier.value === selected[item.id].supplier_id
+                    ) ||
+                    getSupplierOptions(item.material_id)[0] ||
+                    null
                   }
-                  onChange={(v) =>
-                    updateField(item.id, "supplier_id", v?.value)
-                  }
+                  onChange={(value) => updateField(item.id, "supplier_id", value?.value)}
                   placeholder="Поставщик"
                   isSearchable={false}
                 />
 
-                {/* КОММЕНТ */}
                 <input
                   value={selected[item.id].comment}
-                  onChange={(e) =>
-                    updateField(item.id, "comment", e.target.value)
-                  }
-                  className="w-full p-2 bg-gray-800 rounded text-sm"
+                  onChange={(e) => updateField(item.id, "comment", e.target.value)}
+                  className={modalInputClass}
                   placeholder="Комментарий"
                 />
-
               </div>
-
             )}
-
           </div>
-
         );
-
       })}
 
-      {/* PAGINATION */}
-      <div className="flex justify-center gap-3 mt-6">
-
+      <div className="mt-6 flex justify-center gap-3">
         <button
           disabled={!pagination?.hasPrev}
           onClick={() => setPage(page - 1)}
-          className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50"
+          className={subtleButtonClass}
         >
-          Prev
+          Назад
         </button>
 
-        <span className="text-sm text-gray-400">
+        <span className={`text-sm ${themeText.secondary(isDark)}`}>
           {pagination?.page || page} / {pagination?.pages || 1}
         </span>
 
         <button
           disabled={!pagination?.hasNext}
           onClick={() => setPage(page + 1)}
-          className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50"
+          className={subtleButtonClass}
         >
-          Next
+          Далее
         </button>
-
       </div>
 
-      {/* CREATE */}
       <button
         onClick={createPurchase}
-        className="fixed bottom-20 right-8 px-5 py-3 bg-green-600 rounded-lg"
+        className="fixed bottom-20 right-8 rounded-lg bg-green-600 px-5 py-3 text-white"
       >
         Создать закуп ({Object.keys(selected).length})
       </button>
-
     </div>
-
   );
-
 }

@@ -3,37 +3,33 @@ import Select from "react-select";
 import { useParams } from "react-router-dom";
 import {
   Briefcase,
-  Search,
-  Plus,
-  Pencil,
-  Clock,
-  Trash2,
   Calendar,
-  Upload,
-  Download,
-  Paperclip,
-  Users,
-  X,
-  FolderOpen,
   ChevronDown,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
-  FileText
+  ChevronUp,
+  Clock,
+  Download,
+  FolderOpen,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+  Users,
+  X
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { baseURL } from "../api/axios";
-import api from "../api/axios";
+import { FileIcon, defaultStyles } from "react-file-icon";
+import api, { baseURL } from "../api/axios";
 import { deleteRequest, getRequest, postRequest, putRequest } from "../api/request";
 import { AuthContext } from "../auth/AuthContext";
-import { loadDictionaries } from "../utils/dictionaryLoader";
-import { selectStyles } from "../utils/selectStyles";
-import { formatDate, formatDateTime } from "../utils/date";
-import { FileIcon, defaultStyles } from "react-file-icon";
+import { useTheme } from "../context/ThemeContext";
 import AuditLogModal from "./AuditLogModal";
-
-
-
+import { loadDictionaries } from "../utils/dictionaryLoader";
+import { formatDate, formatDateTime } from "../utils/date";
+import { getAuthToken } from "../utils/authStorage";
+import { themeBorder, themeControl, themeSurface, themeText } from "../utils/themeStyles";
 
 const emptyDocumentForm = {
   name: "",
@@ -46,17 +42,6 @@ const emptyDocumentForm = {
 
 const emptyStageForm = { name: "" };
 
-const getStatusStyle = (statusId, statuses) => {
-  const label = statuses.find((item) => item.id === Number(statusId))?.label || "Без статуса";
-  const normalized = label.toLowerCase();
-
-  if (normalized.includes("подпис")) return "bg-green-950 text-green-300 border-green-800";
-  if (normalized.includes("провер") || normalized.includes("соглас")) return "bg-blue-950 text-blue-300 border-blue-800";
-  if (normalized.includes("отклон") || normalized.includes("проср")) return "bg-red-950 text-red-300 border-red-800";
-
-  return "bg-gray-800 text-gray-300 border-gray-700";
-};
-
 const formatMoney = (value) => {
   if (value === null || value === undefined || value === "") return "—";
   return `${Number(value).toLocaleString("ru-RU")} сом`;
@@ -64,9 +49,53 @@ const formatMoney = (value) => {
 
 const isImageFile = (file) => file?.mime_type?.startsWith("image");
 
+const getStatusStyle = (statusId, statuses, isDark) => {
+  const label = statuses.find((item) => item.id === Number(statusId))?.label || "Без статуса";
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes("подпис")) return "border-green-800 bg-green-950 text-green-300";
+  if (normalized.includes("провер") || normalized.includes("соглас")) return "border-blue-800 bg-blue-950 text-blue-300";
+  if (normalized.includes("отклон") || normalized.includes("проср")) return "border-red-800 bg-red-950 text-red-300";
+
+  return isDark ? "border-gray-700 bg-gray-800 text-gray-300" : "border-slate-300 bg-slate-100 text-slate-700";
+};
+
+const getSelectStyles = (isDark) => ({
+  control: (base, state) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff",
+    borderColor: state.isFocused ? "#3b82f6" : isDark ? "#374151" : "#cbd5e1",
+    boxShadow: "none",
+    minHeight: 42
+  }),
+  menu: (base) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff",
+    border: `1px solid ${isDark ? "#374151" : "#cbd5e1"}`
+  }),
+  menuList: (base) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff"
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused ? (isDark ? "#374151" : "#e2e8f0") : isDark ? "#111827" : "#ffffff",
+    color: isDark ? "#f9fafb" : "#0f172a",
+    cursor: "pointer"
+  }),
+  singleValue: (base) => ({ ...base, color: isDark ? "#f9fafb" : "#0f172a" }),
+  placeholder: (base) => ({ ...base, color: isDark ? "#9ca3af" : "#64748b" }),
+  input: (base) => ({ ...base, color: isDark ? "#f9fafb" : "#0f172a" }),
+  multiValue: (base) => ({ ...base, backgroundColor: isDark ? "#1f2937" : "#e2e8f0" }),
+  multiValueLabel: (base) => ({ ...base, color: isDark ? "#f9fafb" : "#0f172a" }),
+  dropdownIndicator: (base) => ({ ...base, color: isDark ? "#9ca3af" : "#64748b" }),
+  indicatorSeparator: () => ({ display: "none" })
+});
+
 export default function ProjectDocuments() {
   const { projectId } = useParams();
   const { user } = useContext(AuthContext);
+  const { isDark } = useTheme();
 
   const [documents, setDocuments] = useState({});
   const [loadedStages, setLoadedStages] = useState({});
@@ -93,25 +122,34 @@ export default function ProjectDocuments() {
   const [stageForm, setStageForm] = useState(emptyStageForm);
   const [previewFiles, setPreviewFiles] = useState([]);
   const [previewIndex, setPreviewIndex] = useState(null);
-  const touchStartX = useRef(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyEntity, setHistoryEntity] = useState(null);
   const [historyId, setHistoryId] = useState(null);
+
+  const touchStartX = useRef(0);
+
   const canApprove = user?.role_id === 1 || user?.role_id === 2;
-
-  const openHistory = (id) => {
-    setHistoryEntity("document");
-    setHistoryId(id);
-    setHistoryOpen(true);
-  };
-
   const canDelete = user?.role_id === 1 || user?.role_id === 14;
+
+  const pageClass = `space-y-4 pb-24 ${themeText.page(isDark)}`;
+  const panelClass = `${themeSurface.panel(isDark)} rounded-2xl px-3 py-3`;
+  const itemPanelClass = `${themeSurface.panel(isDark)} rounded-2xl px-2 py-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.08)]`;
+  const inputClass = themeControl.input(isDark);
+  const modalInputClass = themeControl.modalInput(isDark);
+  const subtleButtonClass = themeControl.subtleButton(isDark);
+
   const projectName = dictionaries.projects?.find((item) => item.id === Number(projectId))?.label || `Проект #${projectId}`;
 
   const userOptions = useMemo(
     () => (dictionaries.users || []).map((item) => ({ value: item.id, label: item.label || item.username })),
     [dictionaries.users]
   );
+
+  const openHistory = (id) => {
+    setHistoryEntity("document");
+    setHistoryId(id);
+    setHistoryOpen(true);
+  };
 
   const getUserNames = (ids = []) => {
     if (!Array.isArray(ids) || !ids.length) return "—";
@@ -122,33 +160,46 @@ export default function ProjectDocuments() {
 
   const loadDicts = async () => {
     const dicts = await loadDictionaries(["documentStatuses", "users", "projects"]);
-    setDictionaries({ documentStatuses: dicts.documentStatuses || [], users: dicts.users || [], projects: dicts.projects || [] });
+    setDictionaries({
+      documentStatuses: dicts.documentStatuses || [],
+      users: dicts.users || [],
+      projects: dicts.projects || []
+    });
   };
 
   const loadStages = async () => {
     try {
       setLoadingStages(true);
       const res = await postRequest("/documentStages/search", { page: stagePage, size: 10, search: stageSearch });
+
       if (!res?.success) {
         toast.error(res?.message || "Не удалось загрузить этапы");
         return;
       }
+
       const filteredStages = (res.data || []).filter((item) => Number(item.project_id) === Number(projectId));
+
       setStages(filteredStages);
       setStagePagination(res.pagination || null);
       setDocuments((prev) => {
         const next = {};
-        filteredStages.forEach((stage) => { next[stage.id] = prev[stage.id] || []; });
+        filteredStages.forEach((stage) => {
+          next[stage.id] = prev[stage.id] || [];
+        });
         return next;
       });
       setLoadedStages((prev) => {
         const next = {};
-        filteredStages.forEach((stage) => { next[stage.id] = Boolean(prev[stage.id]); });
+        filteredStages.forEach((stage) => {
+          next[stage.id] = Boolean(prev[stage.id]);
+        });
         return next;
       });
       setSearchByStage((prev) => {
         const next = {};
-        filteredStages.forEach((stage) => { next[stage.id] = prev[stage.id] || ""; });
+        filteredStages.forEach((stage) => {
+          next[stage.id] = prev[stage.id] || "";
+        });
         return next;
       });
       setExpandedStageId((prev) => {
@@ -173,6 +224,7 @@ export default function ProjectDocuments() {
         size: 200,
         name: searchValue.trim() || undefined
       });
+
       if (res?.success) {
         setDocuments((prev) => ({ ...prev, [stageId]: res.data || [] }));
         setLoadedStages((prev) => ({ ...prev, [stageId]: true }));
@@ -187,8 +239,14 @@ export default function ProjectDocuments() {
     }
   };
 
-  useEffect(() => { loadDicts(); }, [projectId]);
-  useEffect(() => { loadStages(); }, [projectId, stagePage, stageSearch]);
+  useEffect(() => {
+    loadDicts();
+  }, [projectId]);
+
+  useEffect(() => {
+    loadStages();
+  }, [projectId, stagePage, stageSearch]);
+
   useEffect(() => {
     if (!expandedStageId || loadedStages[expandedStageId]) return;
     loadDocuments(expandedStageId, searchByStage[expandedStageId] || "");
@@ -232,7 +290,10 @@ export default function ProjectDocuments() {
       deadline: item.deadline ? String(item.deadline).slice(0, 10) : "",
       status: item.status || "",
       responsible_users: Array.isArray(item.responsible_users)
-        ? item.responsible_users.map((id) => ({ value: id, label: dictionaries.users?.find((userItem) => userItem.id === Number(id))?.label || `User #${id}` }))
+        ? item.responsible_users.map((id) => ({
+          value: id,
+          label: dictionaries.users?.find((userItem) => userItem.id === Number(id))?.label || `User #${id}`
+        }))
         : []
     });
     setDocumentModalOpen(true);
@@ -272,16 +333,20 @@ export default function ProjectDocuments() {
     setStagePage(1);
     setStageSearch("");
   };
+
   const saveDocument = async (e) => {
     e.preventDefault();
     if (!documentForm.name.trim()) return toast.error("Введите название документа");
+
     try {
       setSavingDocument(true);
       const targetStageId = editingDocument?.entity_id || expandedStageId;
+
       if (!targetStageId) {
         toast.error("Сначала выберите этап");
         return;
       }
+
       const payload = {
         entity_type: "document_stage",
         entity_id: Number(targetStageId),
@@ -292,12 +357,17 @@ export default function ProjectDocuments() {
         status: Number(documentForm.status),
         responsible_users: (documentForm.responsible_users || []).map((item) => item.value)
       };
-      const res = editingDocument ? await putRequest(`/documents/update/${editingDocument.id}`, payload) : await postRequest("/documents/create", payload);
+
+      const res = editingDocument
+        ? await putRequest(`/documents/update/${editingDocument.id}`, payload)
+        : await postRequest("/documents/create", payload);
+
       if (!res?.success) {
         toast.error(res?.message || "Не удалось сохранить документ");
         return;
       }
-      toast.success(editingDocument ? "Документ обновлён" : "Документ создан");
+
+      toast.success(editingDocument ? "Документ обновлен" : "Документ создан");
       closeDocumentModal();
       await loadDocuments(targetStageId, searchByStage[targetStageId] || "");
     } catch (error) {
@@ -311,15 +381,20 @@ export default function ProjectDocuments() {
   const saveStage = async (e) => {
     e.preventDefault();
     if (!stageForm.name.trim()) return toast.error("Введите название этапа");
+
     try {
       setSavingStage(true);
       const payload = { name: stageForm.name.trim(), project_id: Number(projectId) };
-      const res = editingStage ? await putRequest(`/documentStages/update/${editingStage.id}`, payload) : await postRequest("/documentStages/create", payload);
+      const res = editingStage
+        ? await putRequest(`/documentStages/update/${editingStage.id}`, payload)
+        : await postRequest("/documentStages/create", payload);
+
       if (!res?.success) {
         toast.error(res?.message || "Не удалось сохранить этап");
         return;
       }
-      toast.success(editingStage ? "Этап обновлён" : "Этап создан");
+
+      toast.success(editingStage ? "Этап обновлен" : "Этап создан");
       closeStageModal();
       if (!editingStage && stagePagination?.pages && stagePage !== 1) setStagePage(1);
       else await loadStages();
@@ -335,10 +410,11 @@ export default function ProjectDocuments() {
     if (!canDelete) return;
     const confirmed = window.confirm(`Удалить документ "${item.name}"?`);
     if (!confirmed) return;
+
     try {
       const res = await deleteRequest(`/documents/delete/${item.id}`);
       if (res?.success) {
-        toast.success("Документ удалён");
+        toast.success("Документ удален");
         await loadDocuments(item.entity_id, searchByStage[item.entity_id] || "");
       } else {
         toast.error(res?.message || "Не удалось удалить документ");
@@ -353,10 +429,11 @@ export default function ProjectDocuments() {
     if (!canDelete) return;
     const confirmed = window.confirm(`Удалить этап "${item.name}"?`);
     if (!confirmed) return;
+
     try {
       const res = await deleteRequest(`/documentStages/delete/${item.id}`);
       if (res?.success) {
-        toast.success("Этап удалён");
+        toast.success("Этап удален");
         if (stages.length === 1 && stagePage > 1) setStagePage((prev) => prev - 1);
         else await loadStages();
       } else {
@@ -371,14 +448,20 @@ export default function ProjectDocuments() {
   const handleUploadFiles = async (e, documentId) => {
     const files = e.target.files;
     if (!files?.length) return;
+
     try {
       const formData = new FormData();
       Array.from(files).forEach((file) => formData.append("files", file));
-      const res = await api.post(`/documentFiles/upload/${documentId}`, formData, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+      const token = getAuthToken();
+      const res = await api.post(`/documentFiles/upload/${documentId}`, formData, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (res.data?.success) {
         toast.success("Файлы загружены");
         await loadFiles(documentId);
-      } else toast.error(res.data?.message || "Не удалось загрузить файлы");
+      } else {
+        toast.error(res.data?.message || "Не удалось загрузить файлы");
+      }
     } catch (error) {
       console.error("File upload error", error);
       toast.error(error?.response?.data?.message || "Ошибка загрузки файлов");
@@ -391,12 +474,15 @@ export default function ProjectDocuments() {
     if (!canDelete) return;
     const confirmed = window.confirm("Удалить файл?");
     if (!confirmed) return;
+
     try {
       const res = await deleteRequest(`/documentFiles/${fileId}`);
       if (res?.success) {
-        toast.success("Файл удалён");
+        toast.success("Файл удален");
         await loadFiles(documentId);
-      } else toast.error(res?.message || "Не удалось удалить файл");
+      } else {
+        toast.error(res?.message || "Не удалось удалить файл");
+      }
     } catch (error) {
       console.error("File delete error", error);
       toast.error(error?.response?.data?.message || "Ошибка удаления файла");
@@ -404,14 +490,29 @@ export default function ProjectDocuments() {
   };
 
   const getFileUrl = (fileId) => `${baseURL()}/documentFiles/download/${fileId}`;
+
   const openPreview = (files, index) => {
     setPreviewFiles(files.filter(isImageFile));
     setPreviewIndex(index);
   };
-  const closePreview = () => { setPreviewFiles([]); setPreviewIndex(null); };
-  const nextPreview = () => setPreviewIndex((prev) => (prev + 1) % previewFiles.length);
-  const prevPreview = () => setPreviewIndex((prev) => (prev === 0 ? previewFiles.length - 1 : prev - 1));
-  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+
+  const closePreview = () => {
+    setPreviewFiles([]);
+    setPreviewIndex(null);
+  };
+
+  const nextPreview = () => {
+    setPreviewIndex((prev) => (prev + 1) % previewFiles.length);
+  };
+
+  const prevPreview = () => {
+    setPreviewIndex((prev) => (prev === 0 ? previewFiles.length - 1 : prev - 1));
+  };
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
   const handleTouchEnd = (e) => {
     const delta = touchStartX.current - e.changedTouches[0].clientX;
     if (delta > 50) nextPreview();
@@ -420,35 +521,30 @@ export default function ProjectDocuments() {
 
   const getFileIcon = (file, size = 40) => {
     const name = (file.name || "").toLowerCase();
-
-    // достаём расширение
-    const ext = name.includes(".")
-      ? name.split(".").pop()
-      : "";
-
-    // если нет стиля — fallback
-    const style = defaultStyles[ext] || defaultStyles["txt"];
+    const ext = name.includes(".") ? name.split(".").pop() : "";
+    const style = defaultStyles[ext] || defaultStyles.txt;
 
     return (
       <div style={{ width: size, height: size }}>
-        <FileIcon
-          extension={ext}
-          {...style}
-        />
+        <FileIcon extension={ext} {...style} />
       </div>
     );
+  };
+
+  const handleApprove = (item) => {
+    console.log("approve", item.id);
+  };
+
+  const handleReject = (item) => {
+    console.log("reject", item.id);
   };
 
   const renderFileTile = (file, files, imageIndex, documentId) => {
     const image = isImageFile(file);
 
     return (
-      <div
-        key={file.id}
-        className="flex h-[140px] w-full flex-col rounded-xl border border-gray-800 bg-gray-900 p-2"
-      >
-        {/* ПРЕВЬЮ */}
-        <div className="flex h-[70px] items-center justify-center overflow-hidden rounded-lg bg-gray-950">
+      <div key={file.id} className={`${themeSurface.panel(isDark)} flex h-[140px] w-full flex-col p-2`}>
+        <div className={`flex h-[70px] items-center justify-center overflow-hidden rounded-lg ${themeSurface.panelMuted(isDark)}`}>
           {image ? (
             <img
               src={getFileUrl(file.id)}
@@ -461,20 +557,18 @@ export default function ProjectDocuments() {
           )}
         </div>
 
-        {/* НАЗВАНИЕ */}
-        <div className="mt-1 line-clamp-2 text-[11px] text-gray-300">
-          {file.name}
-        </div>
+        <div className={`mt-1 line-clamp-2 text-[11px] ${themeText.primary(isDark)}`}>{file.name}</div>
 
-        {/* КНОПКИ */}
         <div className="mt-auto flex items-center justify-between px-1 pt-1">
-          {canDelete && (
+          {canDelete ? (
             <button
               onClick={() => handleDeleteFile(file.id, documentId)}
               className="flex items-center justify-center rounded-md bg-red-600/20 p-1.5 text-red-500"
             >
               <Trash2 size={16} />
             </button>
+          ) : (
+            <div />
           )}
 
           <button
@@ -491,220 +585,220 @@ export default function ProjectDocuments() {
   const renderDocumentsList = (stageId) => (
     <div className="space-y-2">
       <div className="flex justify-end">
-        <button onClick={() => { setExpandedStageId(stageId); openCreateDocument(); }} className="flex items-center gap-1.5 rounded-xl bg-green-600 px-3 py-1.5 text-xs font-medium hover:bg-green-500"><Plus size={13} />Документ</button>
+        <button
+          onClick={() => {
+            setExpandedStageId(stageId);
+            openCreateDocument();
+          }}
+          className="flex items-center gap-1.5 rounded-xl bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500"
+        >
+          <Plus size={13} />
+          Документ
+        </button>
       </div>
 
       <div className="space-y-3">
-        {loading && expandedStageId === stageId && <div className="text-sm text-gray-400">Загрузка документов...</div>}
-        {!loading && loadedStages[stageId] && (documents[stageId] || []).length === 0 && <div className="text-sm text-gray-400">Документы не найдены.</div>}
+        {loading && expandedStageId === stageId && <div className={`text-sm ${themeText.secondary(isDark)}`}>Загрузка документов...</div>}
+        {!loading && loadedStages[stageId] && (documents[stageId] || []).length === 0 && <div className={`text-sm ${themeText.secondary(isDark)}`}>Документы не найдены.</div>}
 
-        {!loading && loadedStages[stageId] && (documents[stageId] || []).map((item) => {
-          const expanded = expandedDocId === item.id;
-          const files = documentFiles[item.id] || [];
-          let imageCounter = -1;
+        {!loading &&
+          loadedStages[stageId] &&
+          (documents[stageId] || []).map((item) => {
+            const expanded = expandedDocId === item.id;
+            const files = documentFiles[item.id] || [];
+            let imageCounter = -1;
 
-          return (
-            <div key={item.id} className="rounded-2xl border border-gray-800 bg-gray-900 px-2 py-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.08)]">
-              <div onClick={() => toggleDocument(item.id)} className="cursor-pointer space-y-2">
+            return (
+              <div key={item.id} className={itemPanelClass}>
+                <div onClick={() => toggleDocument(item.id)} className="cursor-pointer space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className={`flex items-center gap-2 text-[11px] ${themeText.secondary(isDark)}`}>
+                      <span>Создан: {formatDateTime(item.created_at)}</span>
+                    </div>
 
-                {/* 1️⃣ СТРОКА: дата + статус + кнопки */}
-                <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {canDelete && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteDocumentItem(item);
+                          }}
+                          className="rounded-xl bg-red-600 p-2.5 text-white hover:bg-red-500"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
 
-                  {/* дата */}
-                  <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                    <span>Создан: {formatDateTime(item.created_at)}</span>
-                  </div>
-
-                  {/* справа кнопки */}
-                  <div className="flex items-center gap-2">
-                    {canDelete && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); deleteDocumentItem(item); }}
-                        className="rounded-xl bg-red-600 p-2.5 hover:bg-red-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openHistory(item.id);
+                        }}
+                        className={themeControl.actionTilePadded(isDark)}
                       >
-                        <Trash2 size={14} />
+                        <Clock size={14} />
                       </button>
-                    )}
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openHistory(item.id);
-                      }}
-                      className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"
-                    >
-                      <Clock size={14} />
-                    </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditDocument(item);
+                        }}
+                        className={themeControl.actionTilePadded(isDark)}
+                      >
+                        <Pencil size={14} />
+                      </button>
 
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEditDocument(item); }}
-                      className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"
-                    >
-                      <Pencil size={14} />
-                    </button>
-
-                    <div className="rounded-xl bg-gray-800 p-2.5">
-                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      <div className={themeControl.actionTilePadded(isDark)}>
+                        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </div>
                     </div>
                   </div>
+
+                  <div className={`break-words text-base font-semibold ${themeText.title(isDark)}`}>{item.name}</div>
+
+                  {item.description && <div className={`break-words text-sm ${themeText.primary(isDark)}`}>{item.description}</div>}
+
+                  <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] ${themeText.primary(isDark)}`}>
+                    <span>
+                      <span className={themeText.muted(isDark)}>Цена:</span> {formatMoney(item.price)}
+                    </span>
+                    <span>
+                      <span className={themeText.muted(isDark)}>Дедлайн:</span> {item.deadline ? formatDate(item.deadline) : "—"}
+                    </span>
+                    <div className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${getStatusStyle(item.status, dictionaries.documentStatuses, isDark)}`}>
+                      {getStatusName(item.status)}
+                    </div>
+                  </div>
+
+                  <div className={`rounded-lg px-3 py-1.5 text-[11px] leading-snug ${isDark ? "bg-gray-950/80 text-gray-300" : "bg-slate-100 text-slate-700"}`}>
+                    <div className={`mb-0.5 text-[10px] ${themeText.muted(isDark)}`}>Ответственные</div>
+                    {getUserNames(item.responsible_users)}
+                  </div>
+
+                  {canApprove && (
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReject(item);
+                        }}
+                        className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-xs text-white hover:bg-red-500"
+                      >
+                        Отклонить
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleApprove(item);
+                        }}
+                        className="flex-1 rounded-lg bg-green-600 px-3 py-2 text-xs text-white hover:bg-green-500"
+                      >
+                        Подписать
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* 2️⃣ СТРОКА: название (без truncate) */}
-                <div className="text-base font-semibold text-white break-words">
-                  {item.name}
-                </div>
+                {expanded && (
+                  <div className={`mt-3 rounded-2xl border p-2.5 ${themeBorder.divider(isDark)} ${isDark ? "bg-gray-950/70" : "bg-slate-50"}`}>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-blue-400">
+                        <FolderOpen size={16} />
+                        Файлы документа
+                      </div>
 
-                {/* 3️⃣ СТРОКА: описание */}
-                {item.description && (
-                  <div className="text-sm text-gray-300 break-words">
-                    {item.description}
+                      <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500">
+                        <Upload size={14} />
+                        Добавить
+                        <input type="file" multiple className="hidden" onChange={(e) => handleUploadFiles(e, item.id)} />
+                      </label>
+                    </div>
+
+                    {loadingFilesId === item.id && <div className={`text-xs ${themeText.secondary(isDark)}`}>Загрузка файлов...</div>}
+                    {!loadingFilesId && files.length === 0 && (
+                      <div className={`rounded-lg border border-dashed p-4 text-center text-xs ${isDark ? "border-gray-800 bg-gray-900/60 text-gray-500" : "border-slate-300 bg-white text-slate-500"}`}>
+                        Файлы еще не добавлены
+                      </div>
+                    )}
+                    {!loadingFilesId && files.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {files.map((file) => {
+                          const imageIndex = isImageFile(file) ? ++imageCounter : -1;
+                          return renderFileTile(file, files, imageIndex, item.id);
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
-
-                {/* 4️⃣ СТРОКА: цена + дедлайн + статус*/}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-300">
-
-                  <span>
-                    <span className="text-gray-500">Цена:</span>{" "}
-                    {formatMoney(item.price)}
-                  </span>
-
-                  <span>
-                    <span className="text-gray-500">Дедлайн:</span>{" "}
-                    {item.deadline ? formatDate(item.deadline) : "—"}
-                  </span>
-
-                  {/* СТАТУС */}
-                  <div
-                    className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${getStatusStyle(item.status, dictionaries.documentStatuses)}`}
-                  >
-                    {getStatusName(item.status)}
-                  </div>
-
-                </div>
-
-                {/* 5️⃣ СТРОКА: ответственные */}
-                <div className="rounded-lg bg-gray-950/80 px-3 py-1.5 text-[11px] leading-snug text-gray-300 whitespace-normal break-words">
-                  <div className="text-[10px] text-gray-500 mb-0.5">
-                    Ответственные
-                  </div>
-                  {getUserNames(item.responsible_users)}
-                </div>
-                {canApprove && (
-                  <div className="mt-2 flex items-center justify-between gap-2">
-
-                    {/* ОТКЛОНИТЬ */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReject(item);
-                      }}
-                      className="flex-1 rounded-lg bg-red-600/20 px-3 py-2 text-xs text-red-400 hover:bg-red-600/30"
-                    >
-                      Отклонить
-                    </button>
-
-                    {/* ПОДПИСАТЬ */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleApprove(item);
-                      }}
-                      className="flex-1 rounded-lg bg-green-600/20 px-3 py-2 text-xs text-green-400 hover:bg-green-600/30"
-                    >
-                      Подписать
-                    </button>
-
-                  </div>
-                )}
-
               </div>
-
-              {expanded && (
-                <div className="mt-3 rounded-2xl border border-gray-800 bg-gray-950/70 p-2.5">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-blue-300"><FolderOpen size={16} />Файлы документа</div>
-                    <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-medium hover:bg-blue-500"><Upload size={14} />Добавить<input type="file" multiple className="hidden" onChange={(e) => handleUploadFiles(e, item.id)} /></label>
-                  </div>
-                  {loadingFilesId === item.id && <div className="text-xs text-gray-500">Загрузка файлов...</div>}
-                  {!loadingFilesId && files.length === 0 && <div className="rounded-lg border border-dashed border-gray-800 bg-gray-900/60 p-4 text-center text-xs text-gray-500">Файлы ещё не добавлены</div>}
-                  {!loadingFilesId && files.length > 0 &&
-                    <div className="grid grid-cols-3 gap-2">
-                      {files.map((file) => { const imageIndex = isImageFile(file) ? ++imageCounter : -1; return renderFileTile(file, files, imageIndex, item.id); })}
-                    </div>}
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
     </div>
   );
 
-  const handleApprove = (item) => {
-    console.log("approve", item.id);
-    // API сюда
-  };
-
-  const handleReject = (item) => {
-    console.log("reject", item.id);
-    // API сюда
-  };
-
   return (
-    <div className="space-y-4 pb-24 text-white">
-      <div className="flex items-center gap-2"><Briefcase size={20} className="text-blue-400" /><h1 className="text-lg font-semibold">Юр отдел: {projectName}</h1></div>
+    <div className={pageClass}>
+      <div className="flex items-center gap-2">
+        <Briefcase size={20} className="text-blue-400" />
+        <h1 className="text-lg font-semibold">Юр. отдел: {projectName}</h1>
+      </div>
+
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <FolderOpen size={18} className="text-blue-400" />
-            <div className="text-xl font-semibold text-white">Этапы документов</div>
+            <div className={`text-xl font-semibold ${themeText.title(isDark)}`}>Этапы документов</div>
           </div>
-          <button onClick={openCreateStage} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs hover:bg-blue-500"><Plus size={14} />Этап</button>
+
+          <button onClick={openCreateStage} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500">
+            <Plus size={14} />
+            Этап
+          </button>
         </div>
 
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-3 text-gray-400" />
-            <input value={stageInputSearch} onChange={(e) => setStageInputSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleStageSearch()} placeholder="Поиск этапа..." className="w-full rounded-xl border border-gray-800 bg-gray-900 py-2.5 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none" />
+            <Search size={16} className={`absolute left-3 top-3 ${themeText.secondary(isDark)}`} />
+            <input
+              value={stageInputSearch}
+              onChange={(e) => setStageInputSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleStageSearch()}
+              placeholder="Поиск этапа..."
+              className={inputClass}
+            />
           </div>
-          <button onClick={handleStageSearch} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm hover:bg-blue-500">Go</button>
-          {(stageSearch || stageInputSearch) && <button onClick={resetStageSearch} className="rounded-xl bg-gray-800 px-4 py-2.5 text-sm hover:bg-gray-700">Сброс</button>}
+
+          <button onClick={handleStageSearch} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm text-white hover:bg-blue-500">
+            Go
+          </button>
+
+          {(stageSearch || stageInputSearch) && (
+            <button onClick={resetStageSearch} className={subtleButtonClass}>
+              Сброс
+            </button>
+          )}
         </div>
 
-        {loadingStages ? <div className="text-sm text-gray-400">Загрузка этапов...</div> : stages.length === 0 ? <div className="text-sm text-gray-400">Этапы ещё не добавлены.</div> : (
+        {loadingStages ? (
+          <div className={`text-sm ${themeText.secondary(isDark)}`}>Загрузка этапов...</div>
+        ) : stages.length === 0 ? (
+          <div className={`text-sm ${themeText.secondary(isDark)}`}>Этапы еще не добавлены.</div>
+        ) : (
           <div className="space-y-4">
             {stages.map((stage) => {
               const expanded = expandedStageId === stage.id;
 
               return (
-                <div
-                  key={stage.id}
-                  className="rounded-2xl border border-gray-800 bg-gray-900 px-3 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]"
-                >
-                  <div
-                    onClick={() => setExpandedStageId(expanded ? null : stage.id)}
-                    className="flex cursor-pointer items-start justify-between gap-3"
-                  >
-
-                    {/* ЛЕВАЯ ЧАСТЬ */}
+                <div key={stage.id} className={panelClass}>
+                  <div onClick={() => setExpandedStageId(expanded ? null : stage.id)} className="flex cursor-pointer items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-
-                      {/* 1️⃣ дата сверху */}
-                      <div className="text-[11px] text-gray-500">
-                        Создан: {formatDateTime(stage.created_at)}
-                      </div>
-
-                      {/* 2️⃣ название ниже */}
-                      <div className="mt-1 text-base font-semibold text-white break-words">
-                        {stage.name}
-                      </div>
-
+                      <div className={`text-[11px] ${themeText.muted(isDark)}`}>Создан: {formatDateTime(stage.created_at)}</div>
+                      <div className={`mt-1 break-words text-base font-semibold ${themeText.title(isDark)}`}>{stage.name}</div>
                     </div>
 
-                    {/* ПРАВАЯ ЧАСТЬ */}
                     <div className="flex items-center gap-3">
-
                       <div className="flex items-center gap-2">
                         {canDelete && (
                           <button
@@ -712,7 +806,7 @@ export default function ProjectDocuments() {
                               e.stopPropagation();
                               deleteStageItem(stage);
                             }}
-                            className="rounded-xl bg-red-600 p-2.5 hover:bg-red-500"
+                            className="rounded-xl bg-red-600 p-2.5 text-white hover:bg-red-500"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -723,67 +817,94 @@ export default function ProjectDocuments() {
                             e.stopPropagation();
                             openEditStage(stage);
                           }}
-                          className="rounded-xl bg-gray-800 p-2.5 hover:bg-gray-700"
+                          className={themeControl.actionTilePadded(isDark)}
                         >
                           <Pencil size={14} />
                         </button>
                       </div>
 
-                      <div className="rounded-xl bg-gray-800 p-2.5">
+                      <div className={themeControl.actionTilePadded(isDark)}>
                         {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </div>
-
                     </div>
                   </div>
 
-                  {expanded && (
-                    <div className="mt-3 -mx-1">
-                      {renderDocumentsList(stage.id)}
-                    </div>
-                  )}
+                  {expanded && <div className="mt-3 -mx-1">{renderDocumentsList(stage.id)}</div>}
                 </div>
               );
             })}
           </div>
         )}
-        {stagePagination && stagePagination.pages > 1 && <div className="mt-4 flex justify-center gap-3"><button disabled={!stagePagination.hasPrev} onClick={() => setStagePage((prev) => prev - 1)} className="rounded-lg bg-gray-800 px-3 py-1 text-sm disabled:opacity-50">Prev</button><span className="text-sm text-gray-400">{stagePagination.page} / {stagePagination.pages}</span><button disabled={!stagePagination.hasNext} onClick={() => setStagePage((prev) => prev + 1)} className="rounded-lg bg-gray-800 px-3 py-1 text-sm disabled:opacity-50">Next</button></div>}
 
+        {stagePagination && stagePagination.pages > 1 && (
+          <div className="mt-4 flex justify-center gap-3">
+            <button disabled={!stagePagination.hasPrev} onClick={() => setStagePage((prev) => prev - 1)} className={subtleButtonClass}>
+              Назад
+            </button>
+            <span className={`text-sm ${themeText.secondary(isDark)}`}>{stagePagination.page} / {stagePagination.pages}</span>
+            <button disabled={!stagePagination.hasNext} onClick={() => setStagePage((prev) => prev + 1)} className={subtleButtonClass}>
+              Далее
+            </button>
+          </div>
+        )}
       </div>
 
       {previewIndex !== null && previewFiles.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95" onClick={closePreview} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           <img src={getFileUrl(previewFiles[previewIndex].id)} alt={previewFiles[previewIndex].name} className="max-h-[88vh] max-w-[92vw] rounded-xl" onClick={(e) => e.stopPropagation()} />
-          {previewFiles.length > 1 && <><button onClick={(e) => { e.stopPropagation(); prevPreview(); }} className="absolute left-3 rounded-full bg-black/50 p-3 text-white"><ChevronLeft size={28} /></button><button onClick={(e) => { e.stopPropagation(); nextPreview(); }} className="absolute right-3 rounded-full bg-black/50 p-3 text-white"><ChevronRight size={28} /></button></>}
-          <button onClick={closePreview} className="absolute top-4 left-4 rounded-full bg-black/50 p-3 text-white"><X size={22} /></button>
+          {previewFiles.length > 1 && (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); prevPreview(); }} className="absolute left-3 rounded-full bg-black/50 p-3 text-white"><ChevronLeft size={28} /></button>
+              <button onClick={(e) => { e.stopPropagation(); nextPreview(); }} className="absolute right-3 rounded-full bg-black/50 p-3 text-white"><ChevronRight size={28} /></button>
+            </>
+          )}
+          <button onClick={closePreview} className="absolute left-4 top-4 rounded-full bg-black/50 p-3 text-white"><X size={22} /></button>
         </div>
       )}
+
       {documentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-gray-800 bg-gray-950">
-            <div className="flex items-start justify-between gap-3 border-b border-gray-800 px-4 py-4">
+          <div className={`${themeSurface.panel(isDark)} flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden`}>
+            <div className={`flex items-start justify-between gap-3 border-b px-4 py-4 ${themeBorder.divider(isDark)}`}>
               <div>
-                <div className="text-lg font-semibold">{editingDocument ? "Редактирование документа" : "Новый документ"}</div>
-                <div className="text-xs text-gray-400">Управление документом и его ответственными</div>
+                <div className={`text-lg font-semibold ${themeText.title(isDark)}`}>{editingDocument ? "Редактирование документа" : "Новый документ"}</div>
+                <div className={`text-xs ${themeText.secondary(isDark)}`}>Управление документом и его ответственными</div>
               </div>
-              <button onClick={closeDocumentModal} className="mt-1 text-gray-400 hover:text-white"><X size={18} /></button>
+              <button onClick={closeDocumentModal} className={`${themeText.secondary(isDark)} ${isDark ? "hover:text-white" : "hover:text-black"}`}><X size={18} /></button>
             </div>
 
             <div className="overflow-y-auto px-4 py-4">
               <form onSubmit={saveDocument} className="space-y-3">
-                <input value={documentForm.name} onChange={(e) => setDocumentForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Название документа" className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-                <textarea value={documentForm.description} onChange={(e) => setDocumentForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Описание" rows={4} className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-                <input type="number" min="0" value={documentForm.price} onChange={(e) => setDocumentForm((prev) => ({ ...prev, price: e.target.value }))} placeholder="Стоимость" className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                <input value={documentForm.name} onChange={(e) => setDocumentForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Название документа" className={modalInputClass} />
+                <textarea value={documentForm.description} onChange={(e) => setDocumentForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Описание" rows={4} className={modalInputClass} />
+                <input type="number" min="0" value={documentForm.price} onChange={(e) => setDocumentForm((prev) => ({ ...prev, price: e.target.value }))} placeholder="Стоимость" className={modalInputClass} />
+
                 <div>
-                  <div className="mb-2 text-xs text-gray-300">Дедлайн</div>
-                  <div className="relative"><Calendar size={16} className="absolute left-3 top-3 text-gray-400" /><input type="date" value={documentForm.deadline} onChange={(e) => setDocumentForm((prev) => ({ ...prev, deadline: e.target.value }))} className="w-full rounded-lg border border-gray-800 bg-gray-900 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none" /></div>
+                  <div className={`mb-2 text-xs ${themeText.primary(isDark)}`}>Дедлайн</div>
+                  <div className="relative">
+                    <Calendar size={16} className={`absolute left-3 top-3 ${themeText.secondary(isDark)}`} />
+                    <input type="date" value={documentForm.deadline} onChange={(e) => setDocumentForm((prev) => ({ ...prev, deadline: e.target.value }))} className={inputClass} />
+                  </div>
                 </div>
+
                 <div>
-                  <div className="mb-2 flex items-center gap-2 text-xs text-gray-300"><Users size={14} />Ответственные</div>
-                  <Select isMulti styles={selectStyles} menuPosition="fixed" options={userOptions} value={documentForm.responsible_users} onChange={(value) => setDocumentForm((prev) => ({ ...prev, responsible_users: value || [] }))} placeholder="Выберите пользователей" />
+                  <div className={`mb-2 flex items-center gap-2 text-xs ${themeText.primary(isDark)}`}><Users size={14} />Ответственные</div>
+                  <Select
+                    isMulti
+                    styles={getSelectStyles(isDark)}
+                    menuPosition="fixed"
+                    options={userOptions}
+                    value={documentForm.responsible_users}
+                    onChange={(value) => setDocumentForm((prev) => ({ ...prev, responsible_users: value || [] }))}
+                    placeholder="Выберите пользователей"
+                  />
                 </div>
+
                 <div className="flex gap-2 pt-2">
-                  <button type="button" onClick={closeDocumentModal} className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Отмена</button>
-                  <button type="submit" disabled={savingDocument} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-50">{savingDocument ? "Сохранение..." : editingDocument ? "Сохранить" : "Создать"}</button>
+                  <button type="button" onClick={closeDocumentModal} className={subtleButtonClass}>Отмена</button>
+                  <button type="submit" disabled={savingDocument} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50">
+                    {savingDocument ? "Сохранение..." : editingDocument ? "Сохранить" : "Создать"}
+                  </button>
                 </div>
               </form>
             </div>
@@ -793,11 +914,23 @@ export default function ProjectDocuments() {
 
       {stageModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 pb-24">
-          <div className="-translate-y-8 w-full max-w-md rounded-2xl border border-gray-800 bg-gray-950 p-4">
-            <div className="mb-4 flex items-center justify-between"><div><div className="text-lg font-semibold">{editingStage ? "Редактирование этапа" : "Новый этап"}</div><div className="text-xs text-gray-400">Этапы юр. документов внутри проекта</div></div><button onClick={closeStageModal} className="text-gray-400 hover:text-white"><X size={18} /></button></div>
+          <div className={`${themeSurface.panel(isDark)} -translate-y-8 w-full max-w-md p-4`}>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <div className={`text-lg font-semibold ${themeText.title(isDark)}`}>{editingStage ? "Редактирование этапа" : "Новый этап"}</div>
+                <div className={`text-xs ${themeText.secondary(isDark)}`}>Этапы юр. документов внутри проекта</div>
+              </div>
+              <button onClick={closeStageModal} className={`${themeText.secondary(isDark)} ${isDark ? "hover:text-white" : "hover:text-black"}`}><X size={18} /></button>
+            </div>
+
             <form onSubmit={saveStage} className="space-y-3">
-              <input value={stageForm.name} onChange={(e) => setStageForm({ name: e.target.value })} placeholder="Название этапа" className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-              <div className="flex gap-2 pt-2"><button type="button" onClick={closeStageModal} className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Отмена</button><button type="submit" disabled={savingStage} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-50">{savingStage ? "Сохранение..." : editingStage ? "Сохранить" : "Создать"}</button></div>
+              <input value={stageForm.name} onChange={(e) => setStageForm({ name: e.target.value })} placeholder="Название этапа" className={modalInputClass} />
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={closeStageModal} className={subtleButtonClass}>Отмена</button>
+                <button type="submit" disabled={savingStage} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50">
+                  {savingStage ? "Сохранение..." : editingStage ? "Сохранить" : "Создать"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -808,13 +941,7 @@ export default function ProjectDocuments() {
         onClose={() => setHistoryOpen(false)}
         entity={historyEntity}
         entityId={historyId}
-        fieldsMap={{
-          name: "Название",
-          price: "Цена",
-          deadline: "Дедлайн",
-          status: "Статус",
-          description: "Описание"
-        }}
+        fieldsMap={{ name: "Название", price: "Цена", deadline: "Дедлайн", status: "Статус", description: "Описание" }}
       />
     </div>
   );

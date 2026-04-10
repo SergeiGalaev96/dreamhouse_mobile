@@ -1,39 +1,36 @@
-import { useEffect, useState } from "react";
-import { postRequest, putRequest } from "../api/request";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import Select from "react-select";
-import { selectStyles } from "../utils/selectStyles";
 import { Search, CheckCircle, Play, Eye, Plus } from "lucide-react";
-import { formatDate } from "../utils/date";
-import { loadDictionaries } from "../utils/dictionaryLoader";
 import toast from "react-hot-toast";
-
-import { useContext } from "react";
+import { postRequest, putRequest } from "../api/request";
+import { selectStyles } from "../utils/selectStyles";
+import { formatDate, formatDateTime } from "../utils/date";
+import { loadDictionaries } from "../utils/dictionaryLoader";
 import { AuthContext } from "../auth/AuthContext";
+import { useTheme } from "../context/ThemeContext";
+import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
+import dayjs from "dayjs";
+import PullToRefresh from "../components/PullToRefresh";
 
 export default function Tasks() {
   const { user } = useContext(AuthContext);
-
   const { projectId } = useParams();
+  const { isDark } = useTheme();
   const [tasks, setTasks] = useState([]);
-
   const [search, setSearch] = useState("");
   const [inputSearch, setInputSearch] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [dictionaries, setDictionaries] = useState({});
-
+  const [hideTitle, setHideTitle] = useState(false);
   const [tab, setTab] = useState("new");
   const [statuses, setStatuses] = useState([1]);
-
-
+  const [selectedUserId, setSelectedUserId] = useState(null);
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
   const [size] = useState(10);
-
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-
   const [newTask, setNewTask] = useState({
     title: "",
     description: "",
@@ -42,106 +39,133 @@ export default function Tasks() {
     priority: 2
   });
 
-  /* ---------------- LOAD ---------------- */
+  const pageClass = themeText.page(isDark);
+  const stickyClass = `${themeSurface.sticky(isDark)} space-y-3`;
+  const searchInputClass = themeControl.input(isDark);
+  const inactiveTabClass = isDark ? "bg-gray-800 text-white" : "border border-slate-300 bg-white text-black";
+  const cardClass = themeSurface.card(isDark);
+  const descriptionClass = themeText.muted(isDark);
+  const metaClass = themeText.secondary(isDark);
+  const modalClass = `${themeSurface.panel(isDark)} w-[400px] space-y-3 p-5 ${themeText.page(isDark)}`;
+  const modalInputClass = themeControl.modalInput(isDark);
+  const pagerButtonClass = themeControl.subtleButton(isDark);
+  const pagerTextClass = `text-sm ${themeText.secondary(isDark)}`;
+
+  const loadTasks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await postRequest("/tasks/search", {
+        user_id: user?.role_id === 1 ? selectedUserId : user?.id,
+        project_id: projectId,
+        search,
+        statuses,
+        page,
+        size
+      });
+
+      if (res.success) {
+        setTasks(res.data || []);
+        setPagination(res.pagination || null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [page, projectId, search, selectedUserId, size, statuses, user?.id, user?.role_id]);
 
   useEffect(() => {
     loadTasks();
-    console.log("USER", user)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, statuses]);
+  }, [loadTasks]);
+
   useEffect(() => {
+    const loadDicts = async () => {
+      setDictionaries(await loadDictionaries(["projects", "taskStatuses", "taskPriorities", "users"]));
+    };
     loadDicts();
   }, []);
 
-  const loadTasks = async () => {
-    setLoading(true);
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+      setHideTitle(scrollTop > 24);
+    };
 
-    const res = await postRequest("/tasks/search", {
-      project_id: projectId,
-      statuses: statuses,
-      page,
-      size
-    });
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
-    if (res.success) {
-      setTasks(res.data);
-      setPagination(res.pagination);
-    }
-
-    setLoading(false);
-  };
-
-  const loadDicts = async () => {
-    const dicts = await loadDictionaries([
-      "projects",
-      "taskStatuses",
-      "taskPriorities",
-      "users"
-    ]);
-    setDictionaries(dicts);
-  };
-
-  const getDictName = (dictName, id, field = "label") => {
-    return dictionaries[dictName]?.find(x => x.id === Number(id))?.[field] || "";
-  };
-
-
-  /* ---------------- STATUS ---------------- */
+  const getDictName = (dictName, id, field = "label") =>
+    dictionaries[dictName]?.find((item) => item.id === Number(id))?.[field] || "";
 
   const getStatusStyle = (id) => {
     switch (id) {
-      case 1: return "bg-gray-600";
-      case 2: return "bg-yellow-500";
-      case 3: return "bg-blue-600";
-      case 4: return "bg-green-600";
-      case 5: return "bg-red-600";
-      default: return "bg-gray-700";
+      case 1:
+        return "bg-gray-600";
+      case 2:
+        return "bg-yellow-500";
+      case 3:
+        return "bg-blue-600";
+      case 4:
+        return "bg-green-600";
+      case 5:
+        return "bg-red-600";
+      default:
+        return "bg-gray-700";
     }
   };
 
-  /* ---------------- ACTIONS ---------------- */
-  const updateStatus = async (task, status) => {
-    const res = await putRequest(`/tasks/update/${task.id}`, { status });
-    if (res.success) {
-      toast.success("Статус обновлен!")
-      loadTasks();
+  const getPriorityBorder = (priority) => {
+    switch (priority) {
+      case 1:
+        return "border-gray-700";
+      case 2:
+        return "border-yellow-500";
+      case 3:
+        return "border-orange-500";
+      case 4:
+        return "border-red-500";
+      default:
+        return "border-gray-700";
     }
   };
 
+  const getDeadlineColor = (deadline) => {
+    if (!deadline) return "text-cyan-500";
+
+    const today = dayjs().startOf("day");
+    const target = dayjs(deadline).startOf("day");
+
+    if (target.isBefore(today)) return "text-red-500";
+    if (target.isSame(today)) return "text-yellow-500";
+    return "text-cyan-500";
+  };
 
   const getOptions = (dictName, fields = []) => {
     const items = dictionaries[dictName];
     if (!items) return [];
 
-    return items.map(item => {
+    return items.map((item) => {
       const extra = {};
-
-      fields.forEach(f => {
-        extra[f] = item[f];
+      fields.forEach((field) => {
+        extra[field] = item[field];
       });
-
-      return {
-        value: item.id,
-        label: item.label,
-        ...extra
-      };
+      return { value: item.id, label: item.label, ...extra };
     });
   };
 
-  /* ---------------- SEARCH ACTION ---------------- */
+  const updateStatus = async (task, status) => {
+    if (status === 5 && !window.confirm("Отменить задачу?")) return;
+
+    const res = await putRequest(`/tasks/update/${task.id}`, { status });
+    if (res.success) {
+      toast.success("Статус обновлен");
+      loadTasks();
+    }
+  };
+
   const handleSearch = () => {
     setPage(1);
     setSearch(inputSearch);
-  };
-
-  const getPriorityBorder = (priority) => {
-    switch (priority) {
-      case 1: return "border-gray-700";     // низкий
-      case 2: return "border-yellow-500";   // средний
-      case 3: return "border-orange-500";      // высокий
-      case 4: return "border-red-500";      // 🔥 критический
-      default: return "border-gray-700";
-    }
   };
 
   const createTask = async () => {
@@ -150,373 +174,204 @@ export default function Tasks() {
     const title = newTask.title.trim();
     const description = newTask.description.trim();
 
-    if (!title) {
-      toast.error("Введите название задачи");
-      return;
-    }
-
-    if (!description) {
-      toast.error("Введите описание задачи");
-      return;
-    }
-
-    if (!newTask.responsible_user_id) {
-      toast.error("Выберите ответственного");
-      return;
-    }
-
-    if (!newTask.deadline) {
-      toast.error("Укажите дедлайн");
-      return;
-    }
+    if (!title) return toast.error("Введите название задачи");
+    if (!description) return toast.error("Введите описание задачи");
+    if (!newTask.responsible_user_id) return toast.error("Выберите ответственного");
+    if (!newTask.deadline) return toast.error("Укажите дедлайн");
 
     try {
       setIsCreating(true);
-
-      const payload = {
+      const res = await postRequest("/tasks/create", {
         ...newTask,
         title,
         description,
         project_id: projectId
-      };
+      });
 
-      const res = await postRequest("/tasks/create", payload);
-
-      if (res.success) {
-        setShowCreateModal(false);
-        setNewTask({
-          title: "",
-          description: "",
-          responsible_user_id: null,
-          deadline: "",
-          priority: 2
-        });
-        loadTasks();
-        toast.success("Задача создана!");
-      } else {
+      if (!res.success) {
         toast.error(res.message || "Ошибка создания");
+        return;
       }
 
-    } catch (e) {
-      console.log("CREATE TASK ERROR", e);
-
-      // 🔥 ВАЖНО
-      toast.error(
-        e.response?.data?.message ||
-        e.message ||
-        "Серверная ошибка"
-      );
+      setShowCreateModal(false);
+      setNewTask({
+        title: "",
+        description: "",
+        responsible_user_id: null,
+        deadline: "",
+        priority: 2
+      });
+      loadTasks();
+      toast.success("Задача создана");
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || "Серверная ошибка");
     } finally {
       setIsCreating(false);
     }
   };
 
-  /* ---------------- UI ---------------- */
   return (
-    <div className="text-white">
-
-      <h1 className="text-lg font-semibold mb-4 select-none">
+    <div className={pageClass}>
+      <h1 className={`select-none text-lg font-semibold transition-all duration-200 ${hideTitle ? "mb-0 max-h-0 overflow-hidden opacity-0" : "mb-4 max-h-12 opacity-100"}`}>
         Задачи: {getDictName("projects", projectId)}
       </h1>
 
-      <div className="space-y-3">
+      <div>
+        {loading && <div className={`mb-3 ${metaClass}`}>Loading...</div>}
 
-        {loading && <div>Loading...</div>}
-
-        {/* TABS */}
-        <div className="flex gap-2">
-
-          <button
-            onClick={() => { setTab("new"); setPage(1); setStatuses([1]); }}
-            className={`flex-1 py-2 rounded ${tab === "new" ? "bg-blue-600" : "bg-gray-800"}`}
-          >
-            Новые
-          </button>
-
-          <button
-            onClick={() => { setTab("active"); setPage(1); setStatuses([2, 3]); }}
-            className={`flex-1 py-2 rounded ${tab === "active" ? "bg-blue-600" : "bg-gray-800"}`}
-          >
-            В работе
-          </button>
-
-          <button
-            onClick={() => { setTab("done"); setPage(1); setStatuses([4, 5]) }}
-            className={`flex-1 py-2 rounded ${tab === "done" ? "bg-blue-600" : "bg-gray-800"}`}
-          >
-            Завершенные
-          </button>
-
-        </div>
-
-        {/* SEARCH */}
-        <div className="flex gap-2 mb-4">
-
-          <div className="relative flex-1">
-
-            <Search
-              size={16}
-              className="absolute left-3 top-3 text-gray-400"
-            />
-
-            <input
-              value={inputSearch}
-              onChange={(e) => setInputSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSearch();
-              }}
-              placeholder="Поиск объектов..."
-              className="w-full pl-9 pr-3 py-2 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:outline-none focus:border-blue-500"
-            />
-
+        <div className={stickyClass} style={{ top: "calc(env(safe-area-inset-top, 0px) + 56px)" }}>
+          <div className="flex gap-2">
+            <button onClick={() => { setTab("new"); setPage(1); setStatuses([1]); }} className={`flex-1 rounded py-1.5 text-sm ${tab === "new" ? "bg-blue-600 text-white" : inactiveTabClass}`}>Новые</button>
+            <button onClick={() => { setTab("active"); setPage(1); setStatuses([2, 3]); }} className={`flex-1 rounded py-1.5 text-sm ${tab === "active" ? "bg-blue-600 text-white" : inactiveTabClass}`}>В работе</button>
+            <button onClick={() => { setTab("done"); setPage(1); setStatuses([4, 5]); }} className={`flex-1 rounded py-1.5 text-sm ${tab === "done" ? "bg-blue-600 text-white" : inactiveTabClass}`}>Завершенные</button>
           </div>
 
-          <button
-            onClick={handleSearch}
-            className="px-4 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm"
-          >
-            Go
-          </button>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className={`absolute left-3 top-3 ${isDark ? "text-gray-400" : "text-gray-500"}`} />
+              <input
+                value={inputSearch}
+                onChange={(e) => setInputSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                placeholder="Поиск задач..."
+                className={searchInputClass}
+              />
+            </div>
+            <button onClick={handleSearch} className="rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500">Go</button>
+          </div>
 
+          {user?.role_id === 1 && (
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Select
+                  isClearable
+                  styles={selectStyles}
+                  options={getOptions("users")}
+                  value={getOptions("users").find((item) => item.value === selectedUserId) || null}
+                  onChange={(option) => {
+                    setPage(1);
+                    setSelectedUserId(option?.value || null);
+                  }}
+                  placeholder="Фильтр по пользователю..."
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setPage(1);
+                  setSelectedUserId(null);
+                }}
+                className={themeControl.chipButton(isDark)}
+              >
+                Все
+              </button>
+            </div>
+          )}
         </div>
 
-        {!loading && tasks.map(task => (
-
-          <div
-            key={task.id}
-            className={`bg-gray-900 border border-gray-800 border-l-4 ${getPriorityBorder(task.priority)} rounded-xl p-4`}
-          >
-
-            {/* HEADER */}
-            <div className="flex justify-between mb-2">
-
-              {/* LEFT */}
-              <div>
-
-                <p className="font-semibold">
-                  {task.title}
-                </p>
-
-                <p className="text-xs text-gray-500">
-                  {task.description}
-                </p>
-
-                {/* 🔥 ДОП ИНФА */}
-                <div className="mt-1 text-[11px] text-gray-400 space-y-0.5">
-
-                  <div>
-                    👤 Автор: {getDictName("users", task.created_user_id)}
+        <PullToRefresh className="mt-3" contentClassName="space-y-3" onRefresh={loadTasks} disabled={loading || showCreateModal}>
+          {!loading && tasks.map((task) => (
+            <div key={task.id} className={`${cardClass} border-l-4 p-3 ${getPriorityBorder(task.priority)}`}>
+              <div className="mb-1.5 flex justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold leading-5">{task.title}</p>
+                  <p className={`mt-0.5 text-xs ${descriptionClass}`}>{task.description}</p>
+                  <div className={`mt-1 space-y-0.5 text-[10px] ${metaClass}`}>
+                    <div>Автор: {getDictName("users", task.created_user_id)}</div>
+                    <div>Ответственный: {getDictName("users", task.responsible_user_id)}</div>
                   </div>
-
-                  <div>
-                    🧑‍🔧 Ответственный: {getDictName("users", task.responsible_user_id)}
-                  </div>
-
                 </div>
 
+                <div className="shrink-0 text-right">
+                  <span className={`rounded px-2 py-0.5 text-[11px] text-white ${getStatusStyle(task.status)}`}>{getDictName("taskStatuses", task.status)}</span>
+                  <p className={`mt-1 text-[10px] ${metaClass}`}>{formatDateTime(task.created_at)}</p>
+                  <p className={`mt-1 text-[10px] ${getDeadlineColor(task.deadline)}`}>до {formatDate(task.deadline)}</p>
+                </div>
               </div>
 
-              {/* RIGHT */}
-              <div className="text-right">
-
-                {/* статус */}
-                <span className={`px-2 py-0.5 text-xs rounded ${getStatusStyle(task.status)}`}>
-                  {getDictName("taskStatuses", task.status)}
-                </span>
-
-                {/* дедлайн */}
-                <p className="text-xs text-gray-400 mt-1">
-                  до {formatDate(task.deadline)}
-                </p>
-
+              <div className="mt-2 flex flex-wrap gap-2">
+                {task.status === 1 && user.id === task.responsible_user_id && (
+                  <button onClick={() => updateStatus(task, 2)} className="flex items-center gap-1 rounded bg-yellow-600 px-2.5 py-1 text-[11px] text-white"><Eye size={14} />Ознакомлен</button>
+                )}
+                {task.status === 2 && user.id === task.responsible_user_id && (
+                  <button onClick={() => updateStatus(task, 3)} className="flex items-center gap-1 rounded bg-blue-600 px-2.5 py-1 text-[11px] text-white"><Play size={14} />В работу</button>
+                )}
+                {task.status === 3 && user.id === task.responsible_user_id && (
+                  <button onClick={() => updateStatus(task, 4)} className="flex items-center gap-1 rounded bg-green-600 px-2.5 py-1 text-[11px] text-white"><CheckCircle size={14} />Выполнено</button>
+                )}
+                {(task.status === 1 || task.status === 2) && user.id === task.created_user_id && (
+                  <button onClick={() => updateStatus(task, 5)} className="flex items-center gap-1 rounded bg-red-600 px-2.5 py-1 text-[11px] text-white"><CheckCircle size={14} />Отменить</button>
+                )}
               </div>
-
             </div>
+          ))}
+        </PullToRefresh>
 
-            {/* ACTIONS */}
-            <div className="flex gap-2 mt-3">
-
-              {task.status === 1 && user.id === task.responsible_user_id && (
-                <button
-                  onClick={() => updateStatus(task, 2)}
-                  className="flex items-center gap-1 px-3 py-1 bg-yellow-600 rounded text-xs"
-                >
-                  <Eye size={14} />
-                  Ознакомлен
-                </button>
-              )}
-
-              {task.status === 2 && user.id === task.responsible_user_id && (
-                <button
-                  onClick={() => updateStatus(task, 3)}
-                  className="flex items-center gap-1 px-3 py-1 bg-blue-600 rounded text-xs"
-                >
-                  <Play size={14} />
-                  В работу
-                </button>
-              )}
-
-              {task.status === 3 && user.id === task.responsible_user_id && (
-                <button
-                  onClick={() => updateStatus(task, 4)}
-                  className="flex items-center gap-1 px-3 py-1 bg-green-600 rounded text-xs"
-                >
-                  <CheckCircle size={14} />
-                  Выполнено
-                </button>
-              )}
-              {(task.status === 1 || task.status === 2) && user.id === task.created_user_id && (
-                <button
-                  onClick={() => updateStatus(task, 5)}
-                  className="flex items-center gap-1 px-3 py-1 bg-red-600 rounded text-xs"
-                >
-                  <CheckCircle size={14} />
-                  Отменить
-                </button>
-              )}
-
-            </div>
-
-          </div>
-
-        ))}
-
+        <div className="mt-6 flex justify-center gap-3">
+          <button disabled={!pagination?.hasPrev} onClick={() => setPage(page - 1)} className={pagerButtonClass}>Назад</button>
+          <span className={pagerTextClass}>{pagination?.page || page} / {pagination?.pages || 1}</span>
+          <button disabled={!pagination?.hasNext} onClick={() => setPage(page + 1)} className={pagerButtonClass}>Далее</button>
+        </div>
       </div>
 
-      {/* PAGINATION */}
-      <div className="flex justify-center gap-3 mt-6">
-
-        <button
-          disabled={!pagination?.hasPrev}
-          onClick={() => setPage(page - 1)}
-          className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50"
-        >
-          Prev
-        </button>
-
-        <span className="text-sm text-gray-400">
-          {pagination?.page || page} / {pagination?.pages || 1}
-        </span>
-
-        <button
-          disabled={!pagination?.hasNext}
-          onClick={() => setPage(page + 1)}
-          className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50"
-        >
-          Next
-        </button>
-
-      </div>
-
-      {/* CREATE BUTTON */}
-
-      <button
-        onClick={() => setShowCreateModal(true)}
-        className="fixed bottom-20 right-8 w-16 h-16 rounded-full bg-green-600 hover:bg-green-500 flex items-center justify-center shadow-xl transition hover:scale-105"
-      >
+      <button onClick={() => setShowCreateModal(true)} className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl transition hover:scale-105 hover:bg-green-500">
         <Plus size={28} className="text-white" />
       </button>
 
       {showCreateModal && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
-          onClick={() => {
-            if (!isCreating) {
-              setShowCreateModal(false);
-            }
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => !isCreating && setShowCreateModal(false)}>
+          <div onClick={(e) => e.stopPropagation()} className={modalClass}>
+            <div className="text-sm font-semibold">Новая задача</div>
 
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[400px] space-y-3"
-          >
-
-            <div className="text-sm font-semibold">
-              Новая задача
-            </div>
-
-            {/* TITLE */}
             <input
               placeholder="Название"
               value={newTask.title}
-              onChange={(e) =>
-                setNewTask(prev => ({ ...prev, title: e.target.value }))
-              }
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
+              onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))}
+              className={modalInputClass}
             />
 
-            {/* DESCRIPTION */}
             <input
               placeholder="Описание"
               value={newTask.description}
-              onChange={(e) =>
-                setNewTask(prev => ({ ...prev, description: e.target.value }))
-              }
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
+              onChange={(e) => setNewTask((prev) => ({ ...prev, description: e.target.value }))}
+              className={modalInputClass}
             />
 
-            {/* RESPONSIBLE */}
             <Select
               styles={selectStyles}
               options={getOptions("users")}
-              value={getOptions("users").find(u => u.value === newTask.responsible_user_id)}
-              onChange={(v) =>
-                setNewTask(prev => ({ ...prev, responsible_user_id: v.value }))
-              }
+              value={getOptions("users").find((item) => item.value === newTask.responsible_user_id) || null}
+              onChange={(value) => setNewTask((prev) => ({ ...prev, responsible_user_id: value?.value || null }))}
               placeholder="Ответственный"
               isSearchable={false}
             />
 
-            {/* DEADLINE */}
             <input
               type="date"
               value={newTask.deadline}
-              onChange={(e) =>
-                setNewTask(prev => ({ ...prev, deadline: e.target.value }))
-              }
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
+              onChange={(e) => setNewTask((prev) => ({ ...prev, deadline: e.target.value }))}
+              className={modalInputClass}
             />
 
-            {/* PRIORITY */}
             <Select
               styles={selectStyles}
               options={getOptions("taskPriorities")}
-              value={getOptions("taskPriorities").find(p => p.value === newTask.priority)}
-              onChange={(v) =>
-                setNewTask(prev => ({ ...prev, priority: v.value }))
-              }
+              value={getOptions("taskPriorities").find((item) => item.value === newTask.priority) || null}
+              onChange={(value) => setNewTask((prev) => ({ ...prev, priority: value?.value || 2 }))}
               placeholder="Приоритет"
               isSearchable={false}
             />
 
-            {/* BUTTONS */}
             <div className="flex justify-end gap-2 pt-2">
-
-              <button
-                onClick={() => setShowCreateModal(false)}
-                disabled={isCreating}
-                className="px-3 py-1 bg-gray-700 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button onClick={() => setShowCreateModal(false)} disabled={isCreating} className={isDark ? "rounded bg-gray-700 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50" : "rounded border border-slate-300 bg-white px-3 py-1 text-sm text-black disabled:cursor-not-allowed disabled:opacity-50"}>
                 Отмена
               </button>
-
-              <button
-                onClick={createTask}
-                disabled={isCreating}
-                className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button onClick={createTask} disabled={isCreating} className="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50">
                 {isCreating ? "Создание..." : "Создать"}
               </button>
-
             </div>
-
           </div>
-
         </div>
       )}
-
-
     </div>
   );
 }

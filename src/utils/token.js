@@ -1,11 +1,7 @@
-export const setToken = (token) => {
-  localStorage.setItem("token", token);
-};
+import { getAuthToken, removeAuthToken, setAuthToken } from "./authStorage";
 
-export const getToken = () => {
-  return localStorage.getItem("token");
-};
+export const setToken = setAuthToken;
 
-export const removeToken = () => {
-  localStorage.removeItem("token");
-};
+export const getToken = getAuthToken;
+
+export const removeToken = removeAuthToken;

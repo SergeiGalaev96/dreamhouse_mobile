@@ -19,7 +19,8 @@ export const DictionaryConfig = {
     url: "/projectBlocks/gets",
     map: (item) => ({
       id: item.id,
-      label: item.name
+      label: item.name,
+      project_id: item.project_id
     })
   },
 
@@ -111,6 +112,13 @@ export const DictionaryConfig = {
   },
   materialRequestItemStatuses: {
     url: "/materialRequestItemStatuses/gets",
+    map: (item) => ({
+      id: item.id,
+      label: item.name
+    })
+  },
+  materialWriteOffStatuses: {
+    url: "/materialWriteOffStatuses/gets",
     map: (item) => ({
       id: item.id,
       label: item.name

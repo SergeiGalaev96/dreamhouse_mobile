@@ -1,24 +1,27 @@
-import { useEffect, useState, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { postRequest, getRequest } from "../api/request";
+import { useContext, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import Select from "react-select";
+import { Search, FolderKanban, Plus } from "lucide-react";
+import toast from "react-hot-toast";
+import { getRequest, postRequest } from "../api/request";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { formatDateReverse } from "../utils/date";
 import { numberHandler } from "../utils/numberInput";
 import { selectStyles } from "../utils/selectStyles";
-import { Search, FolderKanban, Plus } from "lucide-react";
-import Select from "react-select";
-import toast from "react-hot-toast";
-
+import { useTheme } from "../context/ThemeContext";
+import { AuthContext } from "../auth/AuthContext";
+import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
 
 export default function WorkPerformedCreate() {
-
   const { projectId, blockId } = useParams();
   const navigate = useNavigate();
+  const { isDark } = useTheme();
+  const { user } = useContext(AuthContext);
+  const canEditAdvancePayment = user?.role_id === 1 || user?.role_id === 10;
 
   const [estimateItems, setEstimateMaterials] = useState([]);
   const [search, setSearch] = useState("");
   const [inputSearch, setInputSearch] = useState("");
-
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
   const [dictionaries, setDictionaries] = useState({});
@@ -26,12 +29,10 @@ export default function WorkPerformedCreate() {
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [rates, setRates] = useState([]);
-
   const [showManualModal, setShowManualModal] = useState(false);
-
   const [showPersonModal, setShowPersonModal] = useState(false);
   const [performedPersonName, setPerformedPersonName] = useState("");
-
+  const [advancePayment, setAdvancePayment] = useState("");
   const [manual, setManual] = useState({
     service_type: null,
     service_id: null,
@@ -43,47 +44,7 @@ export default function WorkPerformedCreate() {
     comment: ""
   });
 
-  const editManualItem = (id, item) => {
-
-    const serviceType = getOptions("serviceTypes").find(
-      t => t.value === item.service_type
-    );
-
-    const unit = getOptions("unitsOfMeasure").find(
-      u => u.value === item.unit_of_measure
-    );
-
-    const stage = getOptions("blockStages").find(
-      s => s.value === item.stage_id
-    );
-
-    const subsection = dictionaries.stageSubsections
-      ?.map(s => ({
-        value: s.id,
-        label: s.label,
-        stage_id: s.stage_id
-      }))
-      .find(s => s.value === item.subsection_id);
-
-    setManual({
-      service_type: serviceType || null,
-      service_id: item.service_id,
-      unit_of_measure: unit || null,
-      stage_id: stage || null,
-      subsection_id: subsection || null,
-      quantity: item.quantity,
-      item_type: 2,
-      comment: item.comment || ""
-    });
-
-    setEditingId(id);
-    setShowManualModal(true);
-
-  };
-
   const selectedCount = useMemo(() => Object.keys(selected).length, [selected]);
-
-  /* ---------------- LOAD DATA ---------------- */
 
   useEffect(() => {
     loadServices();
@@ -101,14 +62,91 @@ export default function WorkPerformedCreate() {
     ]).then(setDictionaries);
   }, []);
 
-  const getDictName = (dictName, id, field = "label") => {
-    return dictionaries[dictName]?.find(x => x.id === Number(id))?.[field] || "";
+  const getDictName = (dictName, id, field = "label") =>
+    dictionaries[dictName]?.find((item) => item.id === Number(id))?.[field] || "";
+
+  const getOptions = (dictName, fields = []) => {
+    const items = dictionaries[dictName];
+    if (!items) return [];
+
+    return items.map((item) => {
+      const extra = {};
+      fields.forEach((field) => {
+        extra[field] = item[field];
+      });
+
+      return {
+        value: item.id,
+        label: item.label,
+        ...extra
+      };
+    });
   };
 
+  const serviceTypeOptions = useMemo(() => getOptions("serviceTypes"), [dictionaries]);
+  const stageOptions = useMemo(
+    () =>
+      getOptions("blockStages", ["block_id"]).filter((item) =>
+        item.block_id != null ? Number(item.block_id) === Number(blockId) : true
+      ),
+    [dictionaries, blockId]
+  );
+  const serviceOptions = useMemo(
+    () => getOptions("services", ["service_type", "unit_of_measure"]),
+    [dictionaries]
+  );
+  const stageSubsectionOptions = useMemo(
+    () => getOptions("stageSubsections", ["stage_id"]),
+    [dictionaries]
+  );
 
+  const filteredServiceOptions = useMemo(
+    () =>
+      serviceOptions.filter((item) =>
+        manual.service_type?.value
+          ? Number(item.service_type) === Number(manual.service_type.value)
+          : false
+      ),
+    [serviceOptions, manual.service_type]
+  );
+
+  const subsectionOptions = useMemo(
+    () =>
+      stageSubsectionOptions.filter((item) =>
+        manual.stage_id?.value ? Number(item.stage_id) === Number(manual.stage_id.value) : false
+      ),
+    [stageSubsectionOptions, manual.stage_id]
+  );
+
+  useEffect(() => {
+    if (!serviceTypeOptions.length && !stageOptions.length) return;
+
+    setManual((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      if (!prev.service_type) {
+        const defaultServiceType =
+          serviceTypeOptions.find((item) => Number(item.value) === 1) || serviceTypeOptions[0] || null;
+        if (defaultServiceType) {
+          next.service_type = defaultServiceType;
+          changed = true;
+        }
+      }
+
+      if (!prev.stage_id) {
+        const defaultStage = stageOptions[0] || null;
+        if (defaultStage) {
+          next.stage_id = defaultStage;
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [serviceTypeOptions, stageOptions]);
 
   const loadServices = async () => {
-
     const res = await postRequest("/materialEstimateItems/search", {
       block_id: Number(blockId),
       item_type: 2,
@@ -120,62 +158,28 @@ export default function WorkPerformedCreate() {
     if (!res.success) return;
 
     const sorted = [...res.data].sort((a, b) => b.remaining - a.remaining);
-
-    console.log("SERV", sorted)
-
     setEstimateMaterials(sorted);
     setPagination(res.pagination);
-
-  };
-
-
-  /* ---------------- OPTIONS ---------------- */
-
-  const getOptions = (dictName, fields = []) => {
-    const items = dictionaries[dictName];
-    if (!items) return [];
-
-    return items.map(item => {
-      const extra = {};
-
-      fields.forEach(f => {
-        extra[f] = item[f];
-      });
-
-      return {
-        value: item.id,
-        label: item.label,
-        ...extra
-      };
-    });
   };
 
   const loadRates = async () => {
-    const res = await getRequest(
-      "/currencyRates/getByDate/" + formatDateReverse(new Date())
-    );
+    const res = await getRequest(`/currencyRates/getByDate/${formatDateReverse(new Date())}`);
     if (res.success) {
       setRates(res.data);
     }
   };
 
   const getRateByCurrency = (currencyId) => {
-    const rate = rates.find(r => r.currency_id === currencyId);
+    const rate = rates.find((item) => item.currency_id === currencyId);
     return rate?.rate || "";
   };
 
-  /* ---------------- ESTIMATE ---------------- */
   const toggleItem = (item) => {
-    console.log("IT", item)
-
-    setSelected(prev => {
-
+    setSelected((prev) => {
       if (prev[item.id]) {
-
         const copy = { ...prev };
         delete copy[item.id];
         return copy;
-
       }
 
       return {
@@ -195,13 +199,11 @@ export default function WorkPerformedCreate() {
           comment: ""
         }
       };
-
     });
-
   };
 
   const updateSelected = (id, field, value) => {
-    setSelected(prev => ({
+    setSelected((prev) => ({
       ...prev,
       [id]: {
         ...prev[id],
@@ -210,16 +212,36 @@ export default function WorkPerformedCreate() {
     }));
   };
 
-  /* ---------------- MANUAL ---------------- */
+  const editManualItem = (id, item) => {
+    const serviceType = getOptions("serviceTypes").find((option) => option.value === item.service_type);
+    const unit = getOptions("unitsOfMeasure").find((option) => option.value === item.unit_of_measure);
+    const stage = getOptions("blockStages").find((option) => option.value === item.stage_id);
+    const subsection = dictionaries.stageSubsections
+      ?.map((stageItem) => ({
+        value: stageItem.id,
+        label: stageItem.label,
+        stage_id: stageItem.stage_id
+      }))
+      .find((option) => option.value === item.subsection_id);
+
+    setManual({
+      service_type: serviceType || null,
+      service_id: item.service_id,
+      unit_of_measure: unit || null,
+      stage_id: stage || null,
+      subsection_id: subsection || null,
+      quantity: item.quantity,
+      item_type: 2,
+      comment: item.comment || ""
+    });
+
+    setEditingId(id);
+    setShowManualModal(true);
+  };
+
   const saveManualService = () => {
-    // валидация
-    if (
-      !manual.service_id ||
-      !manual.unit_of_measure ||
-      !manual.stage_id ||
-      !manual.quantity
-    ) {
-      toast.error("Заполни все обязательные поля");
+    if (!manual.service_id || !manual.unit_of_measure || !manual.stage_id || !manual.quantity) {
+      toast.error("Заполните все обязательные поля");
       return;
     }
 
@@ -234,24 +256,18 @@ export default function WorkPerformedCreate() {
       comment: manual.comment
     };
 
-    setSelected(prev => {
-
+    setSelected((prev) => {
       const copy = { ...prev };
 
       if (editingId) {
-        // 🔥 update
         copy[editingId] = itemData;
       } else {
-        // 🔥 create
-        const id = "manual_" + Date.now();
-        copy[id] = itemData;
+        copy[`manual_${Date.now()}`] = itemData;
       }
 
       return copy;
-
     });
 
-    // reset
     setManual({
       service_type: null,
       service_id: null,
@@ -267,26 +283,22 @@ export default function WorkPerformedCreate() {
     setShowManualModal(false);
   };
 
-  const manualItems = Object.entries(selected).filter(
-    ([key]) => key.startsWith("manual_")
-  );
+  const manualItems = Object.entries(selected).filter(([key]) => key.startsWith("manual_"));
+
   const removeItem = (id) => {
-    setSelected(prev => {
+    setSelected((prev) => {
       const copy = { ...prev };
       delete copy[id];
       return copy;
     });
   };
 
-  /* ---------------- CREATE REQUEST ---------------- */
   const createWorkPerformed = async () => {
-
     const items = Object.values(selected);
-
     if (!items.length) return;
 
     if (!performedPersonName) {
-      toast.error("Укажи исполнителя");
+      toast.error("Укажите исполнителя");
       return;
     }
 
@@ -294,6 +306,7 @@ export default function WorkPerformedCreate() {
       project_id: Number(projectId),
       block_id: Number(blockId),
       performed_person_name: performedPersonName,
+      advance_payment: canEditAdvancePayment && advancePayment !== "" ? Number(advancePayment) : null,
       items
     });
 
@@ -302,7 +315,6 @@ export default function WorkPerformedCreate() {
     } else {
       toast.error(res.message);
     }
-
   };
 
   const handleSearch = () => {
@@ -310,26 +322,47 @@ export default function WorkPerformedCreate() {
     setSearch(inputSearch);
   };
 
+  const pageClass = `${themeText.page(isDark)} pb-24`;
+  const titleClass = themeText.title(isDark);
+  const textClass = themeText.primary(isDark);
+  const subTextClass = themeText.secondary(isDark);
+  const cardClass = themeSurface.card(isDark);
+  const modalClass = `${themeSurface.panel(isDark)} w-[420px] space-y-3 p-5 ${themeText.page(isDark)}`;
+  const inputClass = isDark
+    ? "w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white"
+    : "w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-black";
+  const searchInputClass = themeControl.input(isDark);
+  const pagerButtonClass = themeControl.subtleButton(isDark);
+  const manualCardClass = isDark
+    ? "rounded-xl border border-yellow-700/40 bg-gray-900 p-3"
+    : "rounded-xl border border-yellow-300 bg-yellow-50 p-3";
+  const itemCardCheckedClass = isDark
+    ? "border-green-500 bg-gray-800 shadow-lg shadow-green-900/20"
+    : "border-green-500 bg-green-50 shadow-sm";
+  const itemCardUncheckedClass = isDark
+    ? "border-gray-800 hover:border-blue-500"
+    : "border-slate-300 hover:border-blue-500";
+  const sheetClass = isDark
+    ? "relative flex h-[75vh] w-full flex-col rounded-t-2xl bg-gray-900"
+    : "relative flex h-[75vh] w-full flex-col rounded-t-2xl bg-white";
 
   return (
-
-    <div className="space-y-4 text-white pb-24">
-      {/* HEADER */}
-      <div className="flex justify-between items-center">
+    <div className={`space-y-4 ${pageClass}`}>
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <FolderKanban size={20} className="text-blue-400" />
-          <h1 className="text-lg font-semibold">
+          <FolderKanban size={20} className="text-blue-500" />
+          <h1 className={`text-lg font-semibold ${titleClass}`}>
             Создание АВР: {getDictName("projectBlocks", blockId)}
           </h1>
         </div>
       </div>
 
-      {/* ACTIONS */}
-      <div className="flex justify-between items-center gap-2">
-
+      <div className="flex items-center justify-between gap-2">
         <button
           onClick={() => setShowManualModal(true)}
-          className="flex items-center gap-2 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg hover:bg-gray-700 text-sm"
+          className={isDark
+            ? "flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white hover:bg-gray-700"
+            : "flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"}
         >
           <Plus size={16} />
           Добавить услугу
@@ -338,233 +371,144 @@ export default function WorkPerformedCreate() {
         <button
           disabled={!selectedCount}
           onClick={() => setShowPersonModal(true)}
-          className="px-4 py-2 rounded-lg text-sm font-medium bg-green-600 hover:bg-green-500 disabled:bg-gray-700"
+          className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500 disabled:bg-gray-700 disabled:text-white"
         >
           Создать ({selectedCount})
         </button>
-
       </div>
 
-      {/* SEARCH */}
-      <div className="flex gap-2 mb-4">
-
+      <div className="mb-4 flex gap-2">
         <div className="relative flex-1">
-
-          <Search
-            size={16}
-            className="absolute left-3 top-3 text-gray-400"
-          />
-
+          <Search size={16} className={`absolute left-3 top-3 ${isDark ? "text-gray-400" : "text-gray-500"}`} />
           <input
             value={inputSearch}
             onChange={(e) => setInputSearch(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleSearch();
             }}
-            placeholder="Поиск услуг из смет..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:outline-none focus:border-blue-500"
+            placeholder="Поиск услуг из сметы..."
+            className={searchInputClass}
           />
-
         </div>
 
         <button
           onClick={handleSearch}
-          className="px-4 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm"
+          className="rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500"
         >
           Go
         </button>
-
       </div>
 
+      {manualItems.length > 0 && (
+        <div className="space-y-2">
+          <div className={`text-xs ${subTextClass}`}>Добавленные вручную</div>
 
-
-
-      {/* ESTIMATE ITEMS LIST */}
-
-      {
-        manualItems.length > 0 && (
-
-          <div className="space-y-2">
-
-            <div className="text-xs text-gray-400">
-              Добавленные вручную
-            </div>
-
-            {manualItems.map(([id, item]) => (
-
-              <div
-                key={id}
-                className="
-                bg-gray-900
-                border border-yellow-700/40
-                rounded-xl
-                p-3
-                flex justify-between items-start
-                cursor-pointer
-              "
-                onClick={() => editManualItem(id, item)}
-              >
-                {/* LEFT */}
-                <div className="flex flex-col gap-1 flex-1">
-
-                  {/* название + количество */}
-                  <div className="flex justify-between">
-
-                    <span className="text-sm font-semibold text-yellow-400">
-                      {getDictName("services", item.service_id) || "Услуга"}
-                    </span>
-
-                    <span className="text-sm text-gray-300">
-                      {item.quantity}{" "}
-                      <span className="text-gray-500 text-xs">
-                        {getDictName("unitsOfMeasure", item.unit_of_measure)}
-                      </span>
-                    </span>
-
-                  </div>
-
-                  {/* этап */}
-                  <span className="text-xs text-gray-400">
-                    {getDictName("blockStages", item.stage_id)}
-                    {item.subsection_id && (
-                      <>
-                        {" "}
-                        → {getDictName("stageSubsections", item.subsection_id)}
-                      </>
-                    )}
+          {manualItems.map(([id, item]) => (
+            <div
+              key={id}
+              className={`${manualCardClass} flex cursor-pointer items-start justify-between`}
+              onClick={() => editManualItem(id, item)}
+            >
+              <div className="flex flex-1 flex-col gap-1">
+                <div className="flex justify-between gap-3">
+                  <span className="text-sm font-semibold text-yellow-500">
+                    {getDictName("services", item.service_id) || "Услуга"}
                   </span>
 
-                  {/* комментарий */}
-                  {item.comment && (
-                    <span className="text-[11px] text-gray-500">
-                      {item.comment}
+                  <span className={`text-sm ${textClass}`}>
+                    {item.quantity}{" "}
+                    <span className={`text-xs ${subTextClass}`}>
+                      {getDictName("unitsOfMeasure", item.unit_of_measure)}
                     </span>
-                  )}
-
+                  </span>
                 </div>
 
-                {/* DELETE */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); removeItem(id); }}
-                  className="
-                  ml-2
-                  text-red-400
-                  hover:text-red-300
-                  text-xs
-                "
-                >
-                  ✕
-                </button>
+                <span className={`text-xs ${subTextClass}`}>
+                  {getDictName("blockStages", item.stage_id)}
+                  {item.subsection_id && <> {"->"} {getDictName("stageSubsections", item.subsection_id)}</>}
+                </span>
 
+                {item.comment && (
+                  <span className={`text-[11px] ${themeText.muted(isDark)}`}>
+                    {item.comment}
+                  </span>
+                )}
               </div>
 
-            ))}
-
-          </div>
-
-        )
-      }
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeItem(id);
+                }}
+                className="ml-2 text-xs text-red-500 hover:text-red-400"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-2">
-
-        {estimateItems.map(item => {
-
+        {estimateItems.map((item) => {
           const checked = !!selected[item.id];
 
           return (
-
             <div
               key={item.id}
               onClick={() => toggleItem(item)}
-              className={`bg-gray-900 border rounded-xl p-4 flex justify-between items-center cursor-pointer transition-all hover:scale-[1.01]
-                ${checked ? "border-green-500 bg-gray-800 shadow-lg shadow-green-900/20" : "border-gray-800 hover:border-blue-500"}
-              `}
+              className={`${cardClass} flex cursor-pointer items-center justify-between rounded-xl border p-4 transition-all hover:scale-[1.01] ${checked ? itemCardCheckedClass : itemCardUncheckedClass}`}
             >
               <div className="flex flex-col gap-1">
-
-                <span className="text-sm font-semibold text-gray-100">
+                <span className={`text-sm font-semibold ${titleClass}`}>
                   {getDictName("services", item.service_id)}
                 </span>
 
-                <span className="text-xs text-gray-400">
-
+                <span className={`text-xs ${subTextClass}`}>
                   {getDictName("blockStages", item.stage_id)}
-
-                  {item.subsection_id && (
-                    <>
-                      {" "}
-                      → {getDictName("stageSubsections", item.subsection_id)}
-                    </>
-                  )}
-
+                  {item.subsection_id && <> {"->"} {getDictName("stageSubsections", item.subsection_id)}</>}
                 </span>
 
                 <span className="text-xs">
-                  <span className="text-gray-400">К заказу: </span>
-                  <span
-                    className={
-                      item.remaining > 0
-                        ? "text-green-400"
-                        : item.remaining === 0
-                          ? "text-yellow-400"
-                          : "text-red-400"
-                    }
-                  >
+                  <span className={subTextClass}>К заказу: </span>
+                  <span className={item.remaining > 0 ? "text-green-500" : item.remaining === 0 ? "text-yellow-500" : "text-red-500"}>
                     {item.remaining}
                   </span>
-
-                  <span className="text-gray-400">
-                    {" / "}
-                  </span>
-
-                  <span className="text-gray-300">
-                    {item.quantity_planned}
-                  </span>
-
-                  <span className="text-gray-500 ml-1">
+                  <span className={subTextClass}> / </span>
+                  <span className={textClass}>{item.quantity_planned}</span>
+                  <span className={`ml-1 ${themeText.muted(isDark)}`}>
                     {getDictName("unitsOfMeasure", item.unit_of_measure)}
                   </span>
-
                 </span>
 
-                {item.remaining <= 0 &&
-                  <span className="text-[11px] text-red-400">
-                    Возможен перерасход
-                  </span>
-                }
+                {item.remaining <= 0 && (
+                  <span className="text-[11px] text-red-500">Возможен перерасход</span>
+                )}
 
                 {checked && (
-
                   <input
                     type="text"
                     placeholder="Комментарий..."
                     value={selected[item.id]?.comment || ""}
                     onClick={(e) => e.stopPropagation()}
-                    onChange={(e) =>
-                      updateSelected(item.id, "comment", e.target.value)
-                    }
-                    className="mt-2 px-2 py-1 bg-gray-900 border border-gray-700 rounded-md text-xs w-full"
+                    onChange={(e) => updateSelected(item.id, "comment", e.target.value)}
+                    className={inputClass}
                   />
-
                 )}
-
               </div>
 
-
-
               <div className="flex items-center gap-3">
-
                 <input
                   type="text"
                   inputMode="decimal"
                   placeholder="Количество..."
                   value={selected[item.id]?.quantity ?? ""}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={numberHandler((val) =>
-                    updateSelected(item.id, "quantity", val)
-                  )}
+                  onChange={numberHandler((val) => updateSelected(item.id, "quantity", val))}
                   disabled={!checked}
-                  className="w-24 px-2 py-1 bg-gray-900 border border-gray-700 rounded-md text-sm text-right"
+                  className={isDark
+                    ? "w-24 rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-right text-sm text-white"
+                    : "w-24 rounded-md border border-slate-300 bg-white px-2 py-1 text-right text-sm text-black"}
                 />
 
                 <input
@@ -572,281 +516,184 @@ export default function WorkPerformedCreate() {
                   checked={checked}
                   onClick={(e) => e.stopPropagation()}
                   onChange={() => toggleItem(item)}
-                  className="w-5 h-5 accent-green-500 cursor-pointer"
+                  className="h-5 w-5 cursor-pointer accent-green-500"
                 />
-
               </div>
-
             </div>
-
           );
-
         })}
-
       </div>
 
-      {/* MODAL */}
-      {
-        showManualModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[420px] space-y-3">
-              <div className="text-sm font-semibold">
-                Добавить материал вручную
-              </div>
+      {showManualModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className={modalClass}>
+            <div className="text-sm font-semibold">
+              {editingId ? "Редактировать услугу" : "Добавить услугу вручную"}
+            </div>
 
-              {/* SERVICE TYPE */}
+            <Select
+              styles={selectStyles}
+              options={serviceTypeOptions}
+              value={manual.service_type}
+              onChange={(value) => setManual((prev) => ({ ...prev, service_type: value, service_id: null }))}
+              placeholder="Тип услуги..."
+              isSearchable={false}
+            />
 
-              <Select
-                styles={selectStyles}
-                options={getOptions("serviceTypes")}
-                value={manual.service_type}
-                onChange={(v) =>
-                  setManual(prev => ({ ...prev, service_type: v, service_id: null }))
-                }
-                placeholder="Тип услуги..."
-                isSearchable={false}
-              />
-              {/* SERVICE */}
+            <div
+              onClick={() => setShowServiceModal(true)}
+              className={isDark
+                ? "w-full cursor-pointer rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm"
+                : "w-full cursor-pointer rounded border border-slate-300 bg-white px-3 py-2 text-sm text-black"}
+            >
+              {manual.service_id ? (
+                <span className={textClass}>
+                  {filteredServiceOptions.find((item) => item.value === manual.service_id)?.label}
+                </span>
+              ) : (
+                <span className={subTextClass}>Услуга...</span>
+              )}
+            </div>
+
+            {showServiceModal && (
               <div
-                onClick={() => setShowServiceModal(true)}
-                className="
-                w-full px-3 py-2
-                bg-gray-800 border border-gray-700
-                rounded text-sm cursor-pointer
-              "
+                className="fixed inset-0 z-50 flex flex-col justify-end"
+                onClick={() => setShowServiceModal(false)}
               >
-                {manual.service_id ? (
-                  <span className="text-gray-100">
-                    {
-                      getOptions("services", [
-                        "service_type",
-                        "unit_of_measure"
-                      ]).find(m => m.value === manual.service_id)?.label
-                    }
-                  </span>
-                ) : (
-                  <span className="text-gray-400">
-                    Услуга...
-                  </span>
-                )}
-              </div>
+                <div className="absolute inset-0 bg-black/60" />
 
-              {showServiceModal && (
-                <div
-                  className="fixed inset-0 z-50 flex flex-col justify-end"
-                  onClick={() => setShowServiceModal(false)}
-                >
+                <div onClick={(e) => e.stopPropagation()} className={sheetClass}>
+                  <div className={`mx-auto my-2 h-1 w-10 rounded-full ${isDark ? "bg-gray-600" : "bg-slate-400"}`} />
 
-                  {/* overlay */}
-                  <div className="absolute inset-0 bg-black/60" />
-
-                  {/* modal */}
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="
-                    relative
-                    bg-gray-900
-                    rounded-t-2xl
-                    w-full
-                    h-[75vh]          /* 🔥 фикс высота */
-                    flex flex-col
-                  "
-                  >
-
-                    {/* handle */}
-                    <div className="w-10 h-1 bg-gray-600 rounded-full mx-auto my-2" />
-
-                    {/* SEARCH (всегда сверху) */}
-                    <div className="px-4 pb-2">
-
-                      <input
-                        placeholder="Поиск..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="
-                        w-full px-3 py-2
-                        bg-gray-800 border border-gray-700
-                        rounded text-sm
-                      "
-                      />
-
-                    </div>
-
-                    {/* LIST */}
-                    <div className="flex-1 overflow-y-auto px-2">
-
-                      {getOptions("services", [
-                        "service_type",
-                        "unit_of_measure"
-                      ]).filter(m =>
-                        m.label.toLowerCase().includes(search.toLowerCase())
-                      )
-                        .map(item => (
-
-                          <div
-                            key={item.value}
-                            onClick={() => {
-
-                              const defaultUnit = getOptions("unitsOfMeasure").find(
-                                u => u.value === item.unit_of_measure
-                              );
-
-                              setManual(prev => ({
-                                ...prev,
-                                service_id: item.value,
-                                unit_of_measure: defaultUnit || prev.unit_of_measure
-                              }));
-
-                              setShowServiceModal(false);
-                              setSearch("");
-                            }}
-                            className="
-                            px-3 py-3
-                            border-b border-gray-800
-                            text-sm
-                            cursor-pointer
-                            active:bg-gray-800
-                          "
-                          >
-                            {item.label}
-                          </div>
-
-                        ))}
-
-                    </div>
-
+                  <div className="px-4 pb-2">
+                    <input
+                      placeholder="Поиск..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className={inputClass}
+                    />
                   </div>
 
+                  <div className="flex-1 overflow-y-auto px-2">
+                    {filteredServiceOptions
+                      .filter((item) => item.label.toLowerCase().includes(search.toLowerCase()))
+                      .map((item) => (
+                        <div
+                          key={item.value}
+                          onClick={() => {
+                            const defaultUnit = getOptions("unitsOfMeasure").find((unit) => unit.value === item.unit_of_measure);
+
+                            setManual((prev) => ({
+                              ...prev,
+                              service_id: item.value,
+                              unit_of_measure: defaultUnit || prev.unit_of_measure
+                            }));
+
+                            setShowServiceModal(false);
+                            setSearch("");
+                          }}
+                          className={`cursor-pointer border-b px-3 py-3 text-sm active:bg-opacity-80 ${isDark ? "border-gray-800 active:bg-gray-800" : "border-slate-200 active:bg-slate-100"}`}
+                        >
+                          {item.label}
+                        </div>
+                      ))}
+                  </div>
                 </div>
-              )}
-
-
-
-              {/* QUANTITY + UNIT */}
-
-              <div className="grid grid-cols-2 gap-2">
-
-                <input
-                  type="text"
-                  placeholder="Количество"
-                  value={manual.quantity}
-                  onChange={numberHandler((val) =>
-                    setManual(prev => ({ ...prev, quantity: val }))
-                  )}
-                  className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
-                />
-
-                <Select
-                  styles={selectStyles}
-                  options={getOptions("unitsOfMeasure")}
-                  value={manual.unit_of_measure}
-                  onChange={(v) =>
-                    setManual(prev => ({ ...prev, unit_of_measure: v }))
-                  }
-                  placeholder="Ед. изм..."
-                  isSearchable={false}
-                />
-
               </div>
+            )}
 
-
-
-              {/* STAGE */}
-
-              <Select
-                styles={selectStyles}
-                options={getOptions("blockStages")}
-                value={manual.stage_id}
-                onChange={(v) =>
-                  setManual(prev => ({
-                    ...prev,
-                    stage_id: v,
-                    subsection_id: null
-                  }))
-                }
-                placeholder="Этап..."
-                isSearchable={false}
-              />
-
-
-
-              {/* SUBSECTION */}
-
-              <Select
-                styles={selectStyles}
-                options={getOptions("stageSubsections")}
-                value={manual.subsection_id}
-                onChange={(v) =>
-                  setManual(prev => ({ ...prev, subsection_id: v }))
-                }
-                placeholder="Подэтап..."
-                isDisabled={!manual.stage_id}
-                isSearchable={false}
-              />
-
-
-
-              {/* COMMENT */}
-
+            <div className="grid grid-cols-2 gap-2">
               <input
-                placeholder="Комментарий"
-                value={manual.comment}
-                onChange={(e) =>
-                  setManual(prev => ({ ...prev, comment: e.target.value }))
-                }
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
+                type="text"
+                placeholder="Количество"
+                value={manual.quantity}
+                onChange={numberHandler((val) => setManual((prev) => ({ ...prev, quantity: val })))}
+                className={inputClass}
               />
 
-
-
-              {/* BUTTONS */}
-
-              <div className="flex justify-end gap-2 pt-2">
-
-                <button
-                  onClick={() => setShowManualModal(false)}
-                  className="px-3 py-1 bg-gray-700 rounded text-sm"
-                >
-                  Отмена
-                </button>
-
-                <button
-                  onClick={saveManualService}
-                  className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-sm"
-                >
-                  {editingId ? "Сохранить" : "Добавить"}
-                </button>
-
-              </div>
-
+              <Select
+                styles={selectStyles}
+                options={getOptions("unitsOfMeasure")}
+                value={manual.unit_of_measure}
+                onChange={(value) => setManual((prev) => ({ ...prev, unit_of_measure: value }))}
+                placeholder="Ед. изм..."
+                isSearchable={false}
+              />
             </div>
 
-          </div>
+            <Select
+              styles={selectStyles}
+              options={stageOptions}
+              value={manual.stage_id}
+              onChange={(value) => setManual((prev) => ({ ...prev, stage_id: value, subsection_id: null }))}
+              placeholder="Этап..."
+              isSearchable={false}
+            />
 
-        )
-      }
-
-      {showPersonModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[400px] space-y-3">
-
-            <div className="text-sm font-semibold">
-              Исполнитель работ
-            </div>
+            <Select
+              styles={selectStyles}
+              options={subsectionOptions}
+              value={manual.subsection_id}
+              onChange={(value) => setManual((prev) => ({ ...prev, subsection_id: value }))}
+              placeholder="Подэтап..."
+              isDisabled={!manual.stage_id}
+              isSearchable={false}
+            />
 
             <input
-              placeholder="ФИО исполнителя ИП..."
-              value={performedPersonName}
-              onChange={(e) => setPerformedPersonName(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm"
+              placeholder="Комментарий"
+              value={manual.comment}
+              onChange={(e) => setManual((prev) => ({ ...prev, comment: e.target.value }))}
+              className={inputClass}
             />
 
             <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setShowManualModal(false);
+                  setEditingId(null);
+                }}
+                className={themeControl.subtleButton(isDark)}
+              >
+                Отмена
+              </button>
 
               <button
+                onClick={saveManualService}
+                className="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-500"
+              >
+                {editingId ? "Сохранить" : "Добавить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPersonModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className={`${themeSurface.panel(isDark)} w-[400px] space-y-3 rounded-xl p-5 ${themeText.page(isDark)}`}>
+            <div className="text-sm font-semibold">Исполнитель работ</div>
+
+            <input
+              placeholder="ФИО исполнителя / ИП..."
+              value={performedPersonName}
+              onChange={(e) => setPerformedPersonName(e.target.value)}
+              className={inputClass}
+            />
+
+            {canEditAdvancePayment && (
+              <input
+                placeholder="Аванс"
+                value={advancePayment}
+                onChange={numberHandler((value) => setAdvancePayment(value))}
+                className={inputClass}
+              />
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
                 onClick={() => setShowPersonModal(false)}
-                className="px-3 py-1 bg-gray-700 rounded text-sm"
+                className={themeControl.subtleButton(isDark)}
               >
                 Отмена
               </button>
@@ -856,50 +703,38 @@ export default function WorkPerformedCreate() {
                   createWorkPerformed();
                   setShowPersonModal(false);
                 }}
-                className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-sm"
+                className="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-500"
               >
                 Создать
               </button>
-
             </div>
-
           </div>
-
         </div>
       )}
 
-      {/* PAGINATION */}
-      {
-        pagination && (
+      {pagination && (
+        <div className="mt-6 flex justify-center gap-3">
+          <button
+            disabled={!pagination.hasPrev}
+            onClick={() => setPage(page - 1)}
+            className={pagerButtonClass}
+          >
+            Назад
+          </button>
 
-          <div className="flex justify-center gap-3 mt-6">
+          <span className={`text-sm ${subTextClass}`}>
+            {pagination.page} / {pagination.pages}
+          </span>
 
-            <button
-              disabled={!pagination.hasPrev}
-              onClick={() => setPage(page - 1)}
-              className="px-3 py-1 bg-gray-800 rounded"
-            >
-              Prev
-            </button>
-
-            <span className="text-sm text-gray-400">
-              {pagination.page} / {pagination.pages}
-            </span>
-
-            <button
-              disabled={!pagination.hasNext}
-              onClick={() => setPage(page + 1)}
-              className="px-3 py-1 bg-gray-800 rounded"
-            >
-              Next
-            </button>
-
-          </div>
-
-        )
-      }
-    </div >
-
+          <button
+            disabled={!pagination.hasNext}
+            onClick={() => setPage(page + 1)}
+            className={pagerButtonClass}
+          >
+            Далее
+          </button>
+        </div>
+      )}
+    </div>
   );
-
 }

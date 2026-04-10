@@ -1,7 +1,8 @@
 import api from "./axios";
+import { getAuthToken } from "../utils/authStorage";
 
 const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
+  const token = getAuthToken();
 
   return token
     ? { Authorization: `Bearer ${token}` }

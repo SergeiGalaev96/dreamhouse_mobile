@@ -1,19 +1,46 @@
-import { useEffect, useState, useContext } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { getRequest, postRequest, putRequest } from "../api/request";
-import { formatDateTime, formatDateReverse } from "../utils/date";
-import { numberHandler } from "../utils/numberInput";
-import { loadDictionaries } from "../utils/dictionaryLoader";
-import { AuthContext } from "../auth/AuthContext";
-
-import { Search, ClipboardList, Plus } from "lucide-react";
+import { useContext, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ClipboardList, Plus, Search } from "lucide-react";
 import toast from "react-hot-toast";
+import { AuthContext } from "../auth/AuthContext";
+import PullToRefresh from "../components/PullToRefresh";
+import { getRequest, postRequest, putRequest } from "../api/request";
+import { useTheme } from "../context/ThemeContext";
+import { loadDictionaries } from "../utils/dictionaryLoader";
+import { formatDateReverse, formatDateTime } from "../utils/date";
+import { numberHandler } from "../utils/numberInput";
+import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
+
+const roles = {
+  admin: { id: 1, label: "Админ" },
+  foreman: { id: 4, label: "Прораб" },
+  site_manager: { id: 9, label: "Нач. уч" },
+  purchasing_agent: { id: 7, label: "Снабж" },
+  planning_engineer: { id: 10, label: "ПТО" },
+  main_engineer: { id: 11, label: "Гл. инж" }
+};
+
+const workflow = [
+  "foreman",
+  "site_manager",
+  "purchasing_agent",
+  "main_engineer",
+  "planning_engineer"
+];
+
+const miStatusStyles = {
+  1: "bg-gray-500/10 text-gray-400",
+  2: "bg-yellow-500/10 text-yellow-400",
+  3: "bg-blue-500/10 text-blue-400",
+  4: "bg-green-500/10 text-green-400",
+  5: "bg-red-500/10 text-red-400"
+};
 
 export default function MaterialRequests() {
-
   const { projectId, blockId } = useParams();
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
+  const { isDark } = useTheme();
 
   const roleId = user?.role_id;
 
@@ -25,8 +52,23 @@ export default function MaterialRequests() {
   const [expandedId, setExpandedId] = useState(null);
   const [dictionaries, setDictionaries] = useState({});
   const [tab, setTab] = useState("new");
-
   const [rates, setRates] = useState([]);
+  const [hideTitle, setHideTitle] = useState(false);
+
+  const role = Object.keys(roles).find((key) => roles[key].id === roleId);
+
+  const pageClass = `space-y-4 ${themeText.page(isDark)}`;
+  const inputClass = themeControl.input(isDark);
+  const cardClass = `${themeSurface.panel(isDark)} p-3 transition hover:border-blue-500`;
+  const pagerButtonClass = themeControl.subtleButton(isDark);
+  const pagerTextClass = `text-sm ${themeText.secondary(isDark)}`;
+  const stickyClass = themeSurface.sticky(isDark);
+  const inactiveTabClass = isDark
+    ? "bg-gray-800 text-white"
+    : "border border-slate-300 bg-white text-black";
+
+  const getApprovalField = (stage) => `approved_by_${stage}`;
+  const getUserField = (stage) => `${stage}_user_id`;
 
   useEffect(() => {
     loadDicts();
@@ -37,8 +79,41 @@ export default function MaterialRequests() {
     loadRequests();
   }, [page, search, tab]);
 
-  const loadRequests = async () => {
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+      setHideTitle(scrollTop > 24);
+    };
 
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  const getStatusesByTab = () => {
+    if (tab === "new") return [1];
+    if (tab === "active") return [2, 3];
+    return [4, 5];
+  };
+
+  const getDictName = (dictName, id, field = "label") =>
+    dictionaries[dictName]?.find((item) => item.id === Number(id))?.[field] || "";
+
+  const itemCardClass = (itemType) =>
+    `${themeSurface.panelMuted(isDark)} rounded border p-2 text-xs ${
+      itemType === 1
+        ? "border-green-500/30"
+        : itemType === 2
+          ? "border-orange-500/30"
+          : isDark
+            ? "border-gray-700"
+            : "border-slate-300"
+    }`;
+
+  const loadRequests = async () => {
     const res = await postRequest("/materialRequests/search", {
       project_id: Number(projectId),
       block_id: blockId ? Number(blockId) : null,
@@ -50,19 +125,13 @@ export default function MaterialRequests() {
 
     if (!res.success) return;
 
-    // 🔥 грузим сметы
     const dicts = await loadDictionaries(["materialEstimates"]);
-
-    const estimates = [...(dicts.materialEstimates || [])]
-      .sort((a, b) => a.block_id - b.block_id);
-
+    const estimates = [...(dicts.materialEstimates || [])].sort((a, b) => a.block_id - b.block_id);
     const firstEstimateId = estimates[0]?.id || null;
 
-    // 🔥 init сразу при установке
-    const prepared = res.data.map(r => ({
-      ...r,
-      items: r.items.map(item => {
-
+    const prepared = res.data.map((request) => ({
+      ...request,
+      items: request.items.map((item) => {
         if (item.item_type !== 2) return item;
 
         return {
@@ -70,61 +139,30 @@ export default function MaterialRequests() {
           currency: item.currency ?? 1,
           currency_rate: item.currency_rate ?? null,
           coefficient: item.coefficient ?? null,
-          material_estimate_id:
-            item.material_estimate_id ?? firstEstimateId
+          material_estimate_id: item.material_estimate_id ?? firstEstimateId
         };
-
       })
     }));
 
     setRequests(prepared);
     setPagination(res.pagination);
-
   };
-
-  // const initItem = (item, firstEstimateId) => {
-
-  //   if (item.item_type !== 2) return item;
-
-  //   return {
-  //     ...item,
-  //     currency: item.currency ?? 1,
-  //     currency_rate: item.currency_rate ?? null,
-  //     coefficient: item.coefficient ?? null,
-  //     material_estimate_id:
-  //       item.material_estimate_id ?? firstEstimateId ?? null
-  //   };
-
-  // };
 
   const updateItemField = (requestId, itemId, field, value) => {
-
-    setRequests(prev =>
-      prev.map(r => {
-        if (r.id !== requestId) return r;
+    setRequests((prev) =>
+      prev.map((request) => {
+        if (request.id !== requestId) return request;
         return {
-          ...r,
-          items: r.items.map(item => {
-
-            if (item.id !== itemId) return item;
-
-            return {
-              ...item,
-              [field]: value
-            };
-
-          })
+          ...request,
+          items: request.items.map((item) =>
+            item.id === itemId ? { ...item, [field]: value } : item
+          )
         };
-
       })
     );
-
   };
 
-
-
   const loadDicts = async () => {
-
     const dicts = await loadDictionaries([
       "materials",
       "unitsOfMeasure",
@@ -138,142 +176,74 @@ export default function MaterialRequests() {
     ]);
 
     setDictionaries(dicts);
-
   };
-  const getDictName = (dictName, id, field = "label") => {
-    return dictionaries[dictName]?.find(x => x.id === Number(id))?.[field] || "";
-  };
-
-  const currencyOptions = dictionaries.currencies?.map(c => ({
-    value: c.id,
-    label: c.code
-  }));
 
   const loadRates = async () => {
-    const res = await getRequest(
-      "/currencyRates/getByDate/" + formatDateReverse(new Date())
-    );
-    if (res.success) {
-      setRates(res.data);
-    }
+    const res = await getRequest(`/currencyRates/getByDate/${formatDateReverse(new Date())}`);
+    if (res.success) setRates(res.data);
   };
 
   const getRateByCurrency = (currencyId) => {
-    const rate = rates.find(r => r.currency_id === currencyId);
+    const rate = rates.find((item) => item.currency_id === currencyId);
     return rate?.rate || "";
   };
 
-  /* роли */
-  const roles = {
-    admin: { id: 1, label: "Админ" },
-    foreman: { id: 4, label: "Прораб" },
-    site_manager: { id: 9, label: "Нач. уч" },
-    purchasing_agent: { id: 7, label: "Снабж" },
-    planning_engineer: { id: 10, label: "ПТО" },
-    main_engineer: { id: 11, label: "Гл. инж" }
+  const checkToShowInputFields = (item, request) => {
+    if (item.item_type !== 2 || item.status !== 1) return false;
+    if (role === "planning_engineer" || role === "admin") {
+      return request.approved_by_planning_engineer === null;
+    }
+    return false;
   };
 
-  const role = Object.keys(roles).find(
-    key => roles[key].id === roleId
-  );
-
-  const checkToShowInputFields = (item, r) => {
-    if (item.item_type === 2 && item.status === 1) {
-
-      if (role === "planning_engineer" || role === "admin") {
-        // console.log("IT", item, r)
-        if (r.approved_by_planning_engineer === null) {
-          return true
-        }
-      }
-    }
-  }
-
-  /* workflow */
-  const workflow = [
-    "foreman",
-    "site_manager",
-    "purchasing_agent",
-    "main_engineer",
-    "planning_engineer"
-  ];
-
-  const getApprovalField = (stage) => `approved_by_${stage}`;
-  const getUserField = (stage) => `${stage}_user_id`;
-
-  /* проверка возможности подписи */
-
   const canApprove = (stage, request) => {
-
     const approvedField = getApprovalField(stage);
-
-    // уже подписано
     if (request[approvedField]) return false;
-
-    // админ может всё
     if (role === "admin") return true;
-
-    // только своя роль
     if (role !== stage) return false;
-
     return true;
   };
 
-  const isLastApproval = (request, stage) => {
-    return workflow.every(s => {
-      if (s === stage) return true; // текущий сейчас подпишет
-      return request[getApprovalField(s)];
+  const isLastApproval = (request, stage) =>
+    workflow.every((current) => {
+      if (current === stage) return true;
+      return request[getApprovalField(current)];
     });
 
-  }
-
   const findEstimateByBlock = async () => {
-    const est = dictionaries["materialEstimates"]?.find(x => x.block_id === Number(blockId));
-    const est_id = est.id
-    // console.log("EST ID", est_id)
-    return est_id
-  }
+    const estimate = dictionaries.materialEstimates?.find((item) => item.block_id === Number(blockId));
+    return estimate?.id;
+  };
 
   const approveRequest = async (requestId, stage) => {
-
-    const request = requests.find(r => r.id === requestId);
-
-    const needCheck =
-      stage === "planning_engineer" ||
-      stage === "admin";
-
-    /* ---------------- VALIDATION ---------------- */
+    const request = requests.find((item) => item.id === requestId);
+    const needCheck = stage === "planning_engineer" || stage === "admin";
 
     if (needCheck) {
       const invalid = request.items
-        .filter(i => i.item_type === 2 && i.status === 1)
-        .some(i => {
-
-          if (!i.price) return true;
-          if (!i.currency) return true;
-          if ((i.currency ?? 1) !== 1 && !i.currency_rate) return true;
-
+        .filter((item) => item.item_type === 2 && item.status === 1)
+        .some((item) => {
+          if (!item.price) return true;
+          if (!item.currency) return true;
+          if ((item.currency ?? 1) !== 1 && !item.currency_rate) return true;
           return false;
         });
 
       if (invalid) {
-        toast.error("Заполни все поля для доп материалов");
+        toast.error("Заполни все поля для доп. материалов");
         return;
       }
     }
 
-    /* ---------------- ПРОВЕРКА: ПОСЛЕДНИЙ ЭТАП ---------------- */
     const isLast = isLastApproval(request, stage);
 
-    /* ---------------- CREATE ESTIMATE ITEMS (ТОЛЬКО В КОНЦЕ) ---------------- */
     if (isLast) {
+      const materialEstimateId = await findEstimateByBlock();
 
-      const material_estimate_id = await findEstimateByBlock()
-
-      for (const item of request.items.filter(i => i.item_type === 2)) {
-        const createMEIPayload = [
+      for (const item of request.items.filter((current) => current.item_type === 2)) {
+        const createPayload = [
           {
-            material_estimate_id: material_estimate_id,
+            material_estimate_id: materialEstimateId,
             stage_id: item.stage_id,
             subsection_id: item.subsection_id,
             item_type: 1,
@@ -290,83 +260,48 @@ export default function MaterialRequests() {
           }
         ];
 
-        console.log("CRE", createMEIPayload)
+        const createRes = await postRequest("/materialEstimateItems/create", createPayload);
 
-        const createMEIRes = await postRequest("/materialEstimateItems/create", createMEIPayload);
-
-        if (!createMEIRes.success) {
+        if (!createRes.success) {
           toast.error("Ошибка создания элемента сметы");
           return;
         }
-        console.log("RES CREATE", createMEIRes)
-        console.log("MEI CREATE ID", createMEIRes.data[0].id)
 
-        if (!createMEIRes.data[0].id) {
-          toast.error("Не удалось получить ID сметы");
+        const createdId = createRes.data?.[0]?.id;
+
+        if (!createdId) {
+          toast.error("Не удалось получить ID элемента сметы");
           return;
         }
-        else {
-          // /* UPDATE REQUEST ITEM */
-          const updateMRIPayload =
-          {
-            material_estimate_item_id: createMEIRes.data[0].id,
-            price: item.price,
-            coefficient: item.coefficient,
-            currency: item.currency,
-            currency_rate: item.currency_rate
-          };
 
-          console.log("UPDATE PL", updateMRIPayload)
+        const updatePayload = {
+          material_estimate_item_id: createdId,
+          price: item.price,
+          coefficient: item.coefficient,
+          currency: item.currency,
+          currency_rate: item.currency_rate
+        };
 
-          const updateItemsRes = await putRequest(`/materialRequestItems/update/${item.id}`, updateMRIPayload);
-          console.log("RES UPDATE", updateItemsRes)
+        const updateRes = await putRequest(`/materialRequestItems/update/${item.id}`, updatePayload);
 
-          if (!updateItemsRes.success) {
-            toast.error("Ошибка обновления элементов заявки");
-            return;
-          }
+        if (!updateRes.success) {
+          toast.error("Ошибка обновления элементов заявки");
+          return;
         }
       }
     }
 
-    /* ---------------- ПОДПИСЬ ---------------- */
     const payload = {
       [getApprovalField(stage)]: true,
       [getUserField(stage)]: user.id
     };
 
-    const res = await putRequest(
-      `/materialRequests/update/${requestId}`,
-      payload
-    );
+    const res = await putRequest(`/materialRequests/update/${requestId}`, payload);
 
     if (res.success) {
       loadRequests();
       toast.success("Заявка подписана");
     }
-
-  };
-
-
-  const getStatusesByTab = () => {
-    if (tab === "new") return [1];
-    if (tab === "active") return [2, 3];
-    return [4, 5];
-  };
-
-
-
-  const miStatusStyles = {
-    1: "bg-gray-500/10 text-gray-400",       // Создан
-    2: "bg-yellow-500/10 text-yellow-400",   // Одобрено
-    3: "bg-blue-500/10 text-blue-400",       // Частично заказано
-    4: "bg-green-500/10 text-green-400",     // Полностью заказано
-    5: "bg-red-500/10 text-red-400"          // Отменено
-  };
-
-  const itemTypeStyles = {
-    1: "border-green-500/30",
-    2: "border-orange-500/30"
   };
 
   const handleSearch = () => {
@@ -375,361 +310,307 @@ export default function MaterialRequests() {
   };
 
   return (
-
-    <div className="space-y-4 text-white">
-
-      {/* HEADER */}
-      <div className="flex items-center gap-2">
+    <div className={pageClass}>
+      <div
+        className={`select-none transition-all duration-200 ${
+          hideTitle ? "mb-0 max-h-0 overflow-hidden opacity-0" : "mb-4 max-h-12 opacity-100"
+        }`}
+      >
+        <div className="flex items-center gap-2">
         <ClipboardList size={20} className="text-blue-400" />
         <h1 className="text-lg font-semibold">
           Заявки: {getDictName("projectBlocks", blockId)}
         </h1>
+        </div>
       </div>
 
-      {/* TABS */}
-      <div className="flex gap-2">
-
+      <div
+        className={stickyClass}
+        style={{ top: "calc(env(safe-area-inset-top, 0px) + 56px)" }}
+      >
+        <div className="flex gap-2">
         <button
-          onClick={() => { setTab("new"); setPage(1); }}
-          className={`flex-1 py-2 rounded ${tab === "new" ? "bg-blue-600" : "bg-gray-800"}`}
+          onClick={() => {
+            setTab("new");
+            setPage(1);
+          }}
+          className={`flex-1 rounded py-2 ${
+            tab === "new" ? "bg-blue-600 text-white" : inactiveTabClass
+          }`}
         >
           Новые
         </button>
-
         <button
-          onClick={() => { setTab("active"); setPage(1); }}
-          className={`flex-1 py-2 rounded ${tab === "active" ? "bg-blue-600" : "bg-gray-800"}`}
+          onClick={() => {
+            setTab("active");
+            setPage(1);
+          }}
+          className={`flex-1 rounded py-2 ${
+            tab === "active" ? "bg-blue-600 text-white" : inactiveTabClass
+          }`}
         >
           Одобрено
         </button>
-
         <button
-          onClick={() => { setTab("done"); setPage(1); }}
-          className={`flex-1 py-2 rounded ${tab === "done" ? "bg-blue-600" : "bg-gray-800"}`}
+          onClick={() => {
+            setTab("done");
+            setPage(1);
+          }}
+          className={`flex-1 rounded py-2 ${
+            tab === "done" ? "bg-blue-600 text-white" : inactiveTabClass
+          }`}
         >
           Завершенные
         </button>
-
       </div>
 
-      {/* SEARCH */}
       <div className="flex gap-2">
-
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-3 text-gray-400" />
+          <Search size={16} className={`absolute left-3 top-3 ${themeText.secondary(isDark)}`} />
           <input
             value={inputSearch}
             onChange={(e) => setInputSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Поиск..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg bg-gray-900 border border-gray-800 text-sm"
+            className={inputClass}
           />
         </div>
 
         <button
           onClick={handleSearch}
-          className="px-4 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm"
+          className="rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500"
         >
           Go
         </button>
+      </div>
 
       </div>
 
+      <PullToRefresh className="mt-3" contentClassName="space-y-1.5" onRefresh={loadRequests}>
+        {requests.map((request) => {
+          const expanded = expandedId === request.id;
 
+          return (
+            <div key={request.id} className={cardClass}>
+              <div
+                onClick={() => setExpandedId(expanded ? null : request.id)}
+                className="cursor-pointer space-y-1"
+              >
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-semibold">№ {request.id}</span>
+                  <span className={`text-[11px] ${themeText.secondary(isDark)}`}>
+                    {formatDateTime(request.created_at)}
+                  </span>
+                </div>
 
-      {requests.map(r => {
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="font-medium text-yellow-400">
+                    {getDictName("materialRequestStatuses", request.status)}
+                  </span>
+                  <span className={themeText.secondary(isDark)}>
+                    Позиций: {request.items?.length || 0}
+                  </span>
+                </div>
 
-        const expanded = expandedId === r.id;
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  {workflow.map((stage) => {
+                    const approved = request[getApprovalField(stage)];
 
-        return (
-
-          <div
-            key={r.id}
-            className="bg-gray-900 border border-gray-800 rounded-lg p-3 hover:border-blue-500 transition"
-          >
-
-            <div
-              onClick={() => setExpandedId(expanded ? null : r.id)}
-              className="cursor-pointer space-y-1"
-            >
-
-              {/* TOP */}
-              <div className="flex justify-between items-center text-sm">
-
-                <span className="font-semibold">
-                  № {r.id}
-                </span>
-
-                <span className="text-[11px] text-gray-400">
-                  {formatDateTime(r.created_at)}
-                </span>
-
+                    return (
+                      <div key={stage} className="flex items-center gap-1">
+                        <div
+                          className={`h-3 w-3 rounded-full ${
+                            approved ? "bg-green-500" : isDark ? "bg-gray-600" : "bg-slate-300"
+                          }`}
+                        />
+                        <span className={themeText.secondary(isDark)}>{roles[stage].label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* STATUS + COUNT */}
-              <div className="flex justify-between items-center text-[12px]">
-
-                <span className="text-yellow-400 font-medium">
-                  {getDictName("materialRequestStatuses", r.status)}
-                </span>
-
-                <span className="text-gray-400">
-                  Позиций: {r.items?.length || 0}
-                </span>
-
-              </div>
-
-              {/* WORKFLOW */}
-              <div className="flex items-center gap-2 flex-wrap text-[11px]">
-
-                {workflow.map(stage => {
-
-                  const approved = r[getApprovalField(stage)];
+              <div
+                className="mt-1 flex flex-wrap gap-1"
+                onClick={() => setExpandedId(expanded ? null : request.id)}
+              >
+                {workflow.map((stage) => {
+                  if (!canApprove(stage, request)) return null;
 
                   return (
-                    <div key={stage} className="flex items-center gap-1">
-
-                      <div
-                        className={`w-3 h-3 rounded-full ${approved ? "bg-green-500" : "bg-gray-600"
-                          }`}
-                      />
-
-                      <span className="text-gray-400">
-                        {roles[stage].label}
-                      </span>
-
-                    </div>
+                    <button
+                      key={stage}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        approveRequest(request.id, stage);
+                      }}
+                      className="rounded bg-blue-600 px-2 py-[3px] text-[11px] text-white hover:bg-blue-500"
+                    >
+                      {roles[stage].label}
+                    </button>
                   );
-
                 })}
-
               </div>
 
-            </div>
-
-            {/* BUTTONS */}
-            <div
-              className="flex flex-wrap gap-1 mt-1"
-              onClick={() => setExpandedId(expanded ? null : r.id)}
-            >
-
-              {workflow.map(stage => {
-
-                if (!canApprove(stage, r)) return null;
-
-                return (
-                  <button
-                    key={stage}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      approveRequest(r.id, stage);
-                    }}
-                    className="px-2 py-[3px] bg-blue-600 hover:bg-blue-500 rounded text-[11px]"
-                  >
-                    {roles[stage].label}
-                  </button>
-                );
-
-              })}
-
-            </div>
-
-            {/* ITEMS */}
-            <div
-              className={`overflow-hidden transition-all duration-300 ${expanded ? "max-h-1000 opacity-100 mt-2" : "max-h-0 opacity-0"
+              <div
+                className={`overflow-hidden transition-all duration-300 ${
+                  expanded ? "mt-2 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
                 }`}
-            >
-              <div className="space-y-2 border-t border-gray-800 pt-2">
-
-                {r.items?.map(item => (
-
-                  <div
-                    key={item.id}
-                    className={`bg-gray-800 border rounded p-2 text-xs ${itemTypeStyles[item.item_type] || "border-gray-700"}`}
-                  >
-
-                    {/* TOP LINE */}
-                    <div className="flex justify-between items-start gap-2">
-
-                      <span className="text-sm font-semibold text-gray-100 truncate">
-                        {getDictName("materials", item.material_id)}
-                      </span>
-
-                      <span className="text-xs text-gray-300 whitespace-nowrap">
-                        {item.quantity}{" "}
-                        <span className="text-gray-500 text-[10px]">
-                          {getDictName("unitsOfMeasure", item.unit_of_measure)}
+              >
+                <div className={`space-y-2 border-t pt-2 ${isDark ? "border-gray-800" : "border-slate-200"}`}>
+                  {request.items?.map((item) => (
+                    <div key={item.id} className={itemCardClass(item.item_type)}>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className={`truncate text-sm font-semibold ${themeText.primary(isDark)}`}>
+                          {getDictName("materials", item.material_id)}
                         </span>
-                      </span>
 
-                    </div>
+                        <span className={`whitespace-nowrap text-xs ${themeText.secondary(isDark)}`}>
+                          {item.quantity}{" "}
+                          <span className={`text-[10px] ${themeText.muted(isDark)}`}>
+                            {getDictName("unitsOfMeasure", item.unit_of_measure)}
+                          </span>
+                        </span>
+                      </div>
 
-                    {/* STAGE + STATUS */}
-                    <div className="flex justify-between items-center mt-[2px]">
+                      <div className="mt-[2px] flex items-center justify-between gap-2">
+                        <span className={`truncate text-[10px] ${themeText.secondary(isDark)}`}>
+                          {getDictName("blockStages", item.stage_id)}
+                          {item.subsection_id && (
+                            <> {"->"} {getDictName("stageSubsections", item.subsection_id)}</>
+                          )}
+                        </span>
 
-                      <span className="text-[10px] text-gray-400 truncate">
-
-                        {getDictName("blockStages", item.stage_id)}
-
-                        {item.subsection_id && (
-                          <>
-                            {" "}→ {getDictName("stageSubsections", item.subsection_id)}
-                          </>
-                        )}
-
-                      </span>
-
-                      <span
-                        className={`text-[10px] px-2 py-[2px] rounded whitespace-nowrap ${miStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"
+                        <span
+                          className={`whitespace-nowrap rounded px-2 py-[2px] text-[10px] ${
+                            miStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"
                           }`}
-                      >
-                        {getDictName("materialRequestItemStatuses", item.status)}
-                      </span>
+                        >
+                          {getDictName("materialRequestItemStatuses", item.status)}
+                        </span>
+                      </div>
 
+                      {item.comment && (
+                        <div className={`mt-[2px] text-[10px] ${themeText.muted(isDark)}`}>
+                          {item.comment}
+                        </div>
+                      )}
+
+                      {checkToShowInputFields(item, request) && (
+                        <div className="mt-2 space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Цена"
+                              value={item.price || ""}
+                              onChange={numberHandler((value) =>
+                                updateItemField(request.id, item.id, "price", value)
+                              )}
+                              className={themeControl.modalInput(isDark)}
+                            />
+
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Коэффициент"
+                              value={
+                                item.coefficient ??
+                                dictionaries.materials?.find((material) => material.id === item.material_id)
+                                  ?.coefficient ??
+                                ""
+                              }
+                              onChange={numberHandler((value) =>
+                                updateItemField(request.id, item.id, "coefficient", value)
+                              )}
+                              className={themeControl.modalInput(isDark)}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              value={item.currency ?? 1}
+                              onChange={(e) => {
+                                const currency = Number(e.target.value);
+                                const rate = currency === 1 ? 1 : getRateByCurrency(currency);
+                                updateItemField(request.id, item.id, "currency", currency);
+                                updateItemField(request.id, item.id, "currency_rate", rate);
+                              }}
+                              className={themeControl.modalInput(isDark)}
+                            >
+                              {dictionaries.currencies?.map((currency) => (
+                                <option key={currency.id} value={currency.id}>
+                                  {currency.code}
+                                </option>
+                              ))}
+                            </select>
+
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Курс"
+                              value={(item.currency ?? 1) === 1 ? 1 : item.currency_rate || ""}
+                              onChange={(e) =>
+                                updateItemField(
+                                  request.id,
+                                  item.id,
+                                  "currency_rate",
+                                  Number(e.target.value)
+                                )
+                              }
+                              disabled={(item.currency ?? 1) === 1}
+                              className={
+                                (item.currency ?? 1) === 1
+                                  ? `${themeSurface.panelMuted(isDark)} ${themeText.muted(
+                                      isDark
+                                    )} rounded border ${
+                                      isDark ? "border-gray-800" : "border-slate-300"
+                                    } px-3 py-2 text-sm`
+                                  : themeControl.modalInput(isDark)
+                              }
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
-
-                    {/* COMMENT */}
-                    {item.comment && (
-                      <div className="text-[10px] text-gray-500 mt-[2px]">
-                        {item.comment}
-                      </div>
-                    )}
-
-                    {checkToShowInputFields(item, r) && (
-
-                      <div className="space-y-2">
-
-                        {/* 🔥 1 СТРОКА — ЦЕНА + КОЭФФ */}
-                        <div className="grid grid-cols-2 gap-2">
-
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="Цена"
-                            value={item.price || ""}
-                            onChange={numberHandler((val) =>
-                              updateItemField(r.id, item.id, "price", val)
-                            )}
-                            className="w-full p-2 bg-gray-700 rounded text-xs"
-                          />
-
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="Коэффициент"
-                            value={
-                              item.coefficient ??
-                              dictionaries.materials?.find(m => m.id === item.material_id)?.coefficient ??
-                              ""
-                            }
-                            onChange={numberHandler((val) =>
-                              updateItemField(r.id, item.id, "coefficient", val)
-                            )}
-                            className="w-full p-2 bg-gray-700 rounded text-xs"
-                          />
-
-                        </div>
-
-                        {/* 🔥 2 СТРОКА — ВАЛЮТА + КУРС */}
-                        <div className="grid grid-cols-2 gap-2">
-
-                          <select
-                            value={item.currency ?? 1}
-                            onChange={(e) => {
-                              const currency = Number(e.target.value);
-                              const rate = currency === 1 ? 1 : getRateByCurrency(currency);
-
-                              updateItemField(r.id, item.id, "currency", currency);
-                              updateItemField(r.id, item.id, "currency_rate", rate);
-                            }}
-                            className="w-full p-2 bg-gray-700 rounded text-xs"
-                          >
-                            {dictionaries.currencies?.map(c => (
-                              <option key={c.id} value={c.id}>
-                                {c.code}
-                              </option>
-                            ))}
-                          </select>
-
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="Курс"
-                            value={
-                              (item.currency ?? 1) === 1
-                                ? 1
-                                : item.currency_rate || ""
-                            }
-                            onChange={(e) =>
-                              updateItemField(r.id, item.id, "currency_rate", Number(e.target.value))
-                            }
-                            disabled={(item.currency ?? 1) === 1}
-                            className={`w-full p-2 rounded text-xs ${(item.currency ?? 1) === 1
-                              ? "bg-gray-800 text-gray-500"
-                              : "bg-gray-700"
-                              }`}
-                          />
-
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-
-          </div>
-        );
-
-      })}
-
-
-
-      {/* PAGINATION */}
+          );
+        })}
+      </PullToRefresh>
 
       {pagination && (
-
-        <div className="flex justify-center gap-3 mt-6">
-
+        <div className="mt-6 flex justify-center gap-3">
           <button
             disabled={!pagination.hasPrev}
             onClick={() => setPage(page - 1)}
-            className="px-3 py-1 bg-gray-800 rounded"
+            className={pagerButtonClass}
           >
-            Prev
+            Назад
           </button>
 
-          <span className="text-sm text-gray-400">
+          <span className={pagerTextClass}>
             {pagination.page} / {pagination.pages}
           </span>
 
           <button
             disabled={!pagination.hasNext}
             onClick={() => setPage(page + 1)}
-            className="px-3 py-1 bg-gray-800 rounded"
+            className={pagerButtonClass}
           >
-            Next
+            Далее
           </button>
-
         </div>
-
       )}
 
-
-
-      {/* CREATE BUTTON */}
-
       <button
-        onClick={() =>
-          navigate(`/projects/${projectId}/blocks/${blockId}/material-request-create`)
-        }
-        className="fixed bottom-20 right-8 w-16 h-16 rounded-full bg-green-600 hover:bg-green-500 flex items-center justify-center shadow-xl transition hover:scale-105"
+        onClick={() => navigate(`/projects/${projectId}/blocks/${blockId}/material-request-create`)}
+        className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl transition hover:scale-105 hover:bg-green-500"
       >
         <Plus size={28} className="text-white" />
       </button>
-
     </div>
-
   );
-
 }
