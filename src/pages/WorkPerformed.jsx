@@ -61,6 +61,8 @@ export default function WorkPerformed() {
   const [openFilesId, setOpenFilesId] = useState(null);
   const [openReportFormatsId, setOpenReportFormatsId] = useState(null);
   const [downloadingReportKey, setDownloadingReportKey] = useState(null);
+  const [form29Month, setForm29Month] = useState(() => new Date().toISOString().slice(0, 7));
+  const [downloadingForm29, setDownloadingForm29] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [previewIndex, setPreviewIndex] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -365,6 +367,21 @@ export default function WorkPerformed() {
     });
   };
 
+  const getMonthRange = (monthValue) => {
+    if (!monthValue) return null;
+
+    const [year, month] = monthValue.split("-").map(Number);
+    if (!year || !month) return null;
+
+    const firstDate = new Date(year, month - 1, 1);
+    const lastDate = new Date(year, month, 0);
+
+    return {
+      dateFrom: firstDate.toISOString().slice(0, 10),
+      dateTo: lastDate.toISOString().slice(0, 10),
+    };
+  };
+
   const downloadWorkPerformedReport = async (actId, format) => {
     const token = getAuthToken();
     const key = `${actId}-${format}`;
@@ -419,6 +436,68 @@ export default function WorkPerformed() {
       toast.error("Ошибка скачивания отчета");
     } finally {
       setDownloadingReportKey(null);
+    }
+  };
+
+  const downloadForm29Report = async () => {
+    const range = getMonthRange(form29Month);
+    const token = getAuthToken();
+
+    if (!range) {
+      toast.error("Выберите месяц");
+      return;
+    }
+
+    try {
+      setDownloadingForm29(true);
+
+      let res = null;
+      let lastError = null;
+
+      for (const url of reportsFallbackURLs()) {
+        try {
+          const reportUrl = `${url}/report/form29?blockId=${Number(blockId)}&dateFrom=${range.dateFrom}&dateTo=${range.dateTo}&format=xlsx`;
+          res = await fetch(reportUrl, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          });
+
+          if (res.ok) break;
+          lastError = new Error(`HTTP ${res.status}`);
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      if (!res?.ok) {
+        throw lastError || new Error("Form29 report service is unavailable");
+      }
+
+      const blob = await res.blob();
+      const fallbackName = `Форма 29 ${form29Month}.xlsx`;
+      const filename = getFilenameFromDisposition(
+        res.headers.get("Content-Disposition"),
+        fallbackName
+      );
+
+      if (Capacitor.isNativePlatform()) {
+        await saveNativeReport(blob, filename);
+        toast.success(`Файл сохранен: ${filename}`);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast.success("Форма 29 скачана");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Ошибка скачивания Формы 29");
+    } finally {
+      setDownloadingForm29(false);
     }
   };
 
@@ -737,6 +816,26 @@ export default function WorkPerformed() {
             className="px-4 bg-blue-600 rounded-lg text-sm text-white"
           >
             Go
+          </button>
+        </div>
+
+        <div className="mt-2 flex gap-2">
+          <input
+            type="month"
+            value={form29Month}
+            onChange={(e) => setForm29Month(e.target.value)}
+            className={isDark
+              ? "rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-white"
+              : "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black"}
+          />
+
+          <button
+            onClick={downloadForm29Report}
+            disabled={downloadingForm29}
+            className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-60"
+          >
+            <FileSpreadsheet size={16} />
+            {downloadingForm29 ? "Скачивание..." : "Форма 29"}
           </button>
         </div>
       </div>

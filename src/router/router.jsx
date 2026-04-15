@@ -14,6 +14,7 @@ const Profile = lazy(() => import("../pages/Profile"));
 const Projects = lazy(() => import("../pages/Projects"));
 const ProjectCard = lazy(() => import("../pages/ProjectCard"));
 const ProjectDocuments = lazy(() => import("../pages/ProjectDocuments"));
+const ProjectReports = lazy(() => import("../pages/ProjectReports"));
 const Users = lazy(() => import("../pages/Users"));
 const Suppliers = lazy(() => import("../pages/Suppliers"));
 const Contractors = lazy(() => import("../pages/Contractors"));
@@ -133,6 +134,7 @@ export default function Router() {
           <Route path="/projects" element={withSuspense(<Projects />)} />
           <Route path="/projects/:projectId" element={withSuspense(<ProjectCard />)} />
           <Route path="/projects/:projectId/documents" element={withSuspense(<ProjectDocuments />)} />
+          <Route path="/projects/:projectId/reports" element={withSuspense(<ProjectReports />)} />
           <Route path="/projects/:projectId/tasks" element={withSuspense(<Tasks />)} />
           <Route path="/notifications" element={withSuspense(<Notifications />)} />
 

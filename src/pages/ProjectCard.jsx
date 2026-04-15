@@ -167,7 +167,7 @@ export default function ProjectCard() {
 
         <div className="grid grid-cols-4 gap-1.5 pt-1 text-xs select-none">
           <div onClick={() => navigate(`/projects/${projectId}/documents`)} className={actionButtonClass}>Юр отдел</div>
-          <div className={actionButtonClass}>Отчеты</div>
+          <div onClick={() => navigate(`/projects/${projectId}/reports`)} className={actionButtonClass}>Отчеты</div>
           <div onClick={() => navigate(`/projects/${projectId}/tasks`)} className={actionButtonClass}>Задачи</div>
           <div onClick={openWarehouseStocks} className={actionButtonClass}>Склад</div>
         </div>
