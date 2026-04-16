@@ -59,6 +59,9 @@ export default function MaterialRequests() {
 
   const pageClass = `space-y-4 ${themeText.page(isDark)}`;
   const inputClass = themeControl.input(isDark);
+  const searchInputClass = isDark
+    ? "h-[42px] w-full rounded-lg border border-gray-800 bg-gray-900 pl-9 pr-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+    : "h-[42px] w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-black focus:border-blue-500 focus:outline-none";
   const cardClass = `${themeSurface.panel(isDark)} p-3 transition hover:border-blue-500`;
   const pagerButtonClass = themeControl.subtleButton(isDark);
   const pagerTextClass = `text-sm ${themeText.secondary(isDark)}`;
@@ -103,14 +106,13 @@ export default function MaterialRequests() {
     dictionaries[dictName]?.find((item) => item.id === Number(id))?.[field] || "";
 
   const itemCardClass = (itemType) =>
-    `${themeSurface.panelMuted(isDark)} rounded border p-2 text-xs ${
-      itemType === 1
-        ? "border-green-500/30"
-        : itemType === 2
-          ? "border-orange-500/30"
-          : isDark
-            ? "border-gray-700"
-            : "border-slate-300"
+    `${themeSurface.panelMuted(isDark)} rounded border p-2 text-xs ${itemType === 1
+      ? "border-green-500/30"
+      : itemType === 2
+        ? "border-orange-500/30"
+        : isDark
+          ? "border-gray-700"
+          : "border-slate-300"
     }`;
 
   const loadRequests = async () => {
@@ -312,15 +314,14 @@ export default function MaterialRequests() {
   return (
     <div className={pageClass}>
       <div
-        className={`select-none transition-all duration-200 ${
-          hideTitle ? "mb-0 max-h-0 overflow-hidden opacity-0" : "mb-4 max-h-12 opacity-100"
-        }`}
+        className={`select-none transition-all duration-200 ${hideTitle ? "mb-0 max-h-0 overflow-hidden opacity-0" : "mb-4 max-h-12 opacity-100"
+          }`}
       >
         <div className="flex items-center gap-2">
-        <ClipboardList size={20} className="text-blue-400" />
-        <h1 className="text-lg font-semibold">
-          Заявки: {getDictName("projectBlocks", blockId)}
-        </h1>
+          <ClipboardList size={20} className="text-blue-400" />
+          <h1 className="text-lg font-semibold">
+            Заявки: {getDictName("projectBlocks", blockId)}
+          </h1>
         </div>
       </div>
 
@@ -329,60 +330,57 @@ export default function MaterialRequests() {
         style={{ top: "calc(env(safe-area-inset-top, 0px) + 56px)" }}
       >
         <div className="flex gap-2">
-        <button
-          onClick={() => {
-            setTab("new");
-            setPage(1);
-          }}
-          className={`flex-1 rounded py-2 ${
-            tab === "new" ? "bg-blue-600 text-white" : inactiveTabClass
-          }`}
-        >
-          Новые
-        </button>
-        <button
-          onClick={() => {
-            setTab("active");
-            setPage(1);
-          }}
-          className={`flex-1 rounded py-2 ${
-            tab === "active" ? "bg-blue-600 text-white" : inactiveTabClass
-          }`}
-        >
-          Одобрено
-        </button>
-        <button
-          onClick={() => {
-            setTab("done");
-            setPage(1);
-          }}
-          className={`flex-1 rounded py-2 ${
-            tab === "done" ? "bg-blue-600 text-white" : inactiveTabClass
-          }`}
-        >
-          Завершенные
-        </button>
-      </div>
-
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search size={16} className={`absolute left-3 top-3 ${themeText.secondary(isDark)}`} />
-          <input
-            value={inputSearch}
-            onChange={(e) => setInputSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            placeholder="Поиск..."
-            className={inputClass}
-          />
+          <button
+            onClick={() => {
+              setTab("new");
+              setPage(1);
+            }}
+            className={`flex-1 rounded py-2 ${tab === "new" ? "bg-blue-600 text-white" : inactiveTabClass
+              }`}
+          >
+            Новые
+          </button>
+          <button
+            onClick={() => {
+              setTab("active");
+              setPage(1);
+            }}
+            className={`flex-1 rounded py-2 ${tab === "active" ? "bg-blue-600 text-white" : inactiveTabClass
+              }`}
+          >
+            Одобрено
+          </button>
+          <button
+            onClick={() => {
+              setTab("done");
+              setPage(1);
+            }}
+            className={`flex-1 rounded py-2 ${tab === "done" ? "bg-blue-600 text-white" : inactiveTabClass
+              }`}
+          >
+            Завершенные
+          </button>
         </div>
 
-        <button
-          onClick={handleSearch}
-          className="rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500"
-        >
-          Go
-        </button>
-      </div>
+        <div className="mt-2 grid grid-cols-[1fr_auto] items-stretch gap-2">
+          <div className="relative min-w-0">
+            <Search size={16} className={`absolute left-3 top-3 ${themeText.secondary(isDark)}`} />
+            <input
+              value={inputSearch}
+              onChange={(e) => setInputSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              placeholder="Поиск..."
+              className={searchInputClass}
+            />
+          </div>
+
+          <button
+            onClick={handleSearch}
+            className="h-[42px] rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500"
+          >
+            Go
+          </button>
+        </div>
 
       </div>
 
@@ -419,9 +417,8 @@ export default function MaterialRequests() {
                     return (
                       <div key={stage} className="flex items-center gap-1">
                         <div
-                          className={`h-3 w-3 rounded-full ${
-                            approved ? "bg-green-500" : isDark ? "bg-gray-600" : "bg-slate-300"
-                          }`}
+                          className={`h-3 w-3 rounded-full ${approved ? "bg-green-500" : isDark ? "bg-gray-600" : "bg-slate-300"
+                            }`}
                         />
                         <span className={themeText.secondary(isDark)}>{roles[stage].label}</span>
                       </div>
@@ -453,9 +450,8 @@ export default function MaterialRequests() {
               </div>
 
               <div
-                className={`overflow-hidden transition-all duration-300 ${
-                  expanded ? "mt-2 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
-                }`}
+                className={`overflow-hidden transition-all duration-300 ${expanded ? "mt-2 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
+                  }`}
               >
                 <div className={`space-y-2 border-t pt-2 ${isDark ? "border-gray-800" : "border-slate-200"}`}>
                   {request.items?.map((item) => (
@@ -482,9 +478,8 @@ export default function MaterialRequests() {
                         </span>
 
                         <span
-                          className={`whitespace-nowrap rounded px-2 py-[2px] text-[10px] ${
-                            miStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"
-                          }`}
+                          className={`whitespace-nowrap rounded px-2 py-[2px] text-[10px] ${miStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"
+                            }`}
                         >
                           {getDictName("materialRequestItemStatuses", item.status)}
                         </span>
@@ -562,10 +557,9 @@ export default function MaterialRequests() {
                               className={
                                 (item.currency ?? 1) === 1
                                   ? `${themeSurface.panelMuted(isDark)} ${themeText.muted(
-                                      isDark
-                                    )} rounded border ${
-                                      isDark ? "border-gray-800" : "border-slate-300"
-                                    } px-3 py-2 text-sm`
+                                    isDark
+                                  )} rounded border ${isDark ? "border-gray-800" : "border-slate-300"
+                                  } px-3 py-2 text-sm`
                                   : themeControl.modalInput(isDark)
                               }
                             />

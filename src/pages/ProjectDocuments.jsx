@@ -34,6 +34,7 @@ import { themeBorder, themeControl, themeSurface, themeText } from "../utils/the
 const emptyDocumentForm = {
   name: "",
   description: "",
+  location: "",
   price: "",
   deadline: "",
   status: 1,
@@ -286,6 +287,7 @@ export default function ProjectDocuments() {
     setDocumentForm({
       name: item.name || "",
       description: item.description || "",
+      location: item.location || "",
       price: item.price || "",
       deadline: item.deadline ? String(item.deadline).slice(0, 10) : "",
       status: item.status || "",
@@ -352,6 +354,7 @@ export default function ProjectDocuments() {
         entity_id: Number(targetStageId),
         name: documentForm.name.trim(),
         description: documentForm.description.trim() || null,
+        location: documentForm.location.trim() || null,
         price: documentForm.price === "" ? null : Number(documentForm.price),
         deadline: documentForm.deadline || null,
         status: Number(documentForm.status),
@@ -658,6 +661,11 @@ export default function ProjectDocuments() {
                   <div className={`break-words text-base font-semibold ${themeText.title(isDark)}`}>{item.name}</div>
 
                   {item.description && <div className={`break-words text-sm ${themeText.primary(isDark)}`}>{item.description}</div>}
+                  {item.location && (
+                    <div className={`break-words text-sm ${themeText.primary(isDark)}`}>
+                      <span className={themeText.muted(isDark)}>Место:</span> {item.location}
+                    </div>
+                  )}
 
                   <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] ${themeText.primary(isDark)}`}>
                     <span>
@@ -877,6 +885,7 @@ export default function ProjectDocuments() {
               <form onSubmit={saveDocument} className="space-y-3">
                 <input value={documentForm.name} onChange={(e) => setDocumentForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Название документа" className={modalInputClass} />
                 <textarea value={documentForm.description} onChange={(e) => setDocumentForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Описание" rows={4} className={modalInputClass} />
+                <input value={documentForm.location} onChange={(e) => setDocumentForm((prev) => ({ ...prev, location: e.target.value }))} placeholder="Место" className={modalInputClass} />
                 <input type="number" min="0" value={documentForm.price} onChange={(e) => setDocumentForm((prev) => ({ ...prev, price: e.target.value }))} placeholder="Стоимость" className={modalInputClass} />
 
                 <div>
@@ -941,7 +950,7 @@ export default function ProjectDocuments() {
         onClose={() => setHistoryOpen(false)}
         entity={historyEntity}
         entityId={historyId}
-        fieldsMap={{ name: "Название", price: "Цена", deadline: "Дедлайн", status: "Статус", description: "Описание" }}
+        fieldsMap={{ name: "Название", price: "Цена", deadline: "Дедлайн", status: "Статус", description: "Описание", location: "Место" }}
       />
     </div>
   );

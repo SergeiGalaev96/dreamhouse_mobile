@@ -530,9 +530,13 @@ export default function MaterialRequestsCreate() {
                           const defaultUnit = getOptions("unitsOfMeasure").find(
                             (unit) => unit.value === item.unit_of_measure
                           );
+                          const defaultMaterialType = getOptions("materialTypes").find(
+                            (type) => type.value === item.type
+                          );
 
                           setManual((prev) => ({
                             ...prev,
+                            material_type: defaultMaterialType || prev.material_type,
                             material_id: item.value,
                             unit_of_measure: defaultUnit || prev.unit_of_measure
                           }));

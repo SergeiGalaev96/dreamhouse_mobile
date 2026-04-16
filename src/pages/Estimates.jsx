@@ -1,6 +1,7 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ClipboardList, Pencil, Plus, Search, X } from "lucide-react";
+import Select from "react-select";
 import toast from "react-hot-toast";
 import { deleteRequest, getRequest, postRequest, putRequest } from "../api/request";
 import { AuthContext } from "../auth/AuthContext";
@@ -12,14 +13,49 @@ import { themeBorder, themeControl, themeSurface, themeText } from "../utils/the
 
 const ESTIMATE_EDITOR_ROLE_IDS = [1, 10, 11];
 
+const getSelectStyles = (isDark) => ({
+  control: (base, state) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff",
+    borderColor: state.isFocused ? "#3b82f6" : isDark ? "#374151" : "#cbd5e1",
+    boxShadow: "none",
+    minHeight: 42,
+    borderRadius: 8
+  }),
+  menu: (base) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff",
+    border: `1px solid ${isDark ? "#374151" : "#cbd5e1"}`,
+    zIndex: 60
+  }),
+  menuList: (base) => ({
+    ...base,
+    backgroundColor: isDark ? "#111827" : "#ffffff"
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused ? (isDark ? "#374151" : "#e2e8f0") : isDark ? "#111827" : "#ffffff",
+    color: isDark ? "#f9fafb" : "#0f172a",
+    cursor: "pointer"
+  }),
+  singleValue: (base) => ({ ...base, color: isDark ? "#f9fafb" : "#0f172a" }),
+  placeholder: (base) => ({ ...base, color: isDark ? "#9ca3af" : "#64748b" }),
+  input: (base) => ({ ...base, color: isDark ? "#f9fafb" : "#0f172a" }),
+  dropdownIndicator: (base) => ({ ...base, color: isDark ? "#9ca3af" : "#64748b" }),
+  indicatorSeparator: () => ({ display: "none" })
+});
+
 const EMPTY_ITEM_FORM = {
   id: null,
   item_type: 1,
   entry_type: 1,
   stage_id: "",
   subsection_id: "",
+  material_type: "",
+  service_type: "",
   material_id: "",
   service_id: "",
+  unit_of_measure: "",
   quantity_planned: "",
   coefficient: "1",
   currency: "1",
@@ -49,6 +85,10 @@ export default function Estimates() {
   const [deletingItemId, setDeletingItemId] = useState(null);
   const [itemModalOpen, setItemModalOpen] = useState(false);
   const [itemForm, setItemForm] = useState(EMPTY_ITEM_FORM);
+  const [inputItemOptionSearch, setInputItemOptionSearch] = useState("");
+  const [itemOptionSearch, setItemOptionSearch] = useState("");
+  const [showItemPicker, setShowItemPicker] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
   const [rates, setRates] = useState([]);
 
   const loadEstimate = useCallback(async () => {
@@ -124,6 +164,27 @@ export default function Estimates() {
     [dictionaries]
   );
 
+  const getOptions = useCallback(
+    (dictName, fields = []) => {
+      const items = dictionaries[dictName];
+      if (!items) return [];
+
+      return items.map((item) => {
+        const extra = {};
+        fields.forEach((field) => {
+          extra[field] = item[field];
+        });
+
+        return {
+          value: item.id,
+          label: item.label,
+          ...extra
+        };
+      });
+    },
+    [dictionaries]
+  );
+
   const getMaterialById = useCallback(
     (id) => dictionaries.materials?.find((item) => Number(item.id) === Number(id)),
     [dictionaries.materials]
@@ -160,6 +221,10 @@ export default function Estimates() {
 
   const handleSearch = () => {
     setItemSearch(inputItemSearch);
+  };
+
+  const handleItemOptionSearch = () => {
+    setItemOptionSearch(inputItemOptionSearch.trim().toLowerCase());
   };
 
   const estimateStatusLabel = useMemo(
@@ -234,9 +299,94 @@ export default function Estimates() {
     [dictionaries.stageSubsections, itemForm.stage_id]
   );
 
+  const stageOptions = useMemo(
+    () =>
+      getOptions("blockStages", ["block_id"])
+        .filter((item) => Number(item.block_id) === Number(blockId)),
+    [blockId, getOptions]
+  );
+
+  const subsectionOptions = useMemo(
+    () =>
+      modalSubsections.map((item) => ({
+        value: item.id,
+        label: item.label,
+        stage_id: item.stage_id
+      })),
+    [modalSubsections]
+  );
+
+  const materialTypeOptions = useMemo(() => getOptions("materialTypes"), [getOptions]);
+  const serviceTypeOptions = useMemo(() => getOptions("serviceTypes"), [getOptions]);
+  const currencyOptions = useMemo(
+    () =>
+      (dictionaries.currencies || []).map((currency) => ({
+        value: String(currency.id),
+        label: currency.code || currency.label
+      })),
+    [dictionaries.currencies]
+  );
+
+  const materialOptions = useMemo(
+    () =>
+      getOptions("materials", ["type"]).map((item) => ({
+        ...item,
+        value: String(item.value)
+      })),
+    [getOptions]
+  );
+
+  const serviceOptions = useMemo(
+    () =>
+      getOptions("services", ["service_type"]).map((item) => ({
+        ...item,
+        value: String(item.value)
+      })),
+    [getOptions]
+  );
+
+  const filteredMaterialOptions = useMemo(() => {
+    const byType = itemForm.material_type
+      ? materialOptions.filter((item) => String(item.type) === String(itemForm.material_type))
+      : materialOptions;
+
+    if (!itemOptionSearch) {
+      return byType;
+    }
+
+    return byType.filter((item) => item.label.toLowerCase().includes(itemOptionSearch));
+  }, [itemForm.material_type, itemOptionSearch, materialOptions]);
+
+  const filteredServiceOptions = useMemo(() => {
+    const byType = itemForm.service_type
+      ? serviceOptions.filter((item) => String(item.service_type) === String(itemForm.service_type))
+      : serviceOptions;
+
+    if (!itemOptionSearch) {
+      return byType;
+    }
+
+    return byType.filter((item) => item.label.toLowerCase().includes(itemOptionSearch));
+  }, [itemForm.service_type, itemOptionSearch, serviceOptions]);
+
+  const pickerOptions = useMemo(
+    () => (Number(itemForm.item_type) === 1 ? filteredMaterialOptions : filteredServiceOptions),
+    [filteredMaterialOptions, filteredServiceOptions, itemForm.item_type]
+  );
+
+  const visiblePickerOptions = useMemo(() => {
+    const query = pickerSearch.trim().toLowerCase();
+    if (!query) return pickerOptions;
+    return pickerOptions.filter((item) => item.label.toLowerCase().includes(query));
+  }, [pickerOptions, pickerSearch]);
+
   const openCreateModal = () => {
     if (!canEditEstimate) return;
     setItemForm(EMPTY_ITEM_FORM);
+    setInputItemOptionSearch("");
+    setItemOptionSearch("");
+    setPickerSearch("");
+    setShowItemPicker(false);
     setItemModalOpen(true);
   };
 
@@ -248,8 +398,11 @@ export default function Estimates() {
       entry_type: Number(item.entry_type || 1),
       stage_id: String(item.stage_id || ""),
       subsection_id: String(item.subsection_id || ""),
+      material_type: String(item.material_type || getMaterialById(item.material_id)?.type || ""),
+      service_type: String(item.service_type || getServiceById(item.service_id)?.service_type || ""),
       material_id: String(item.material_id || ""),
       service_id: String(item.service_id || ""),
+      unit_of_measure: String(item.unit_of_measure || ""),
       quantity_planned: String(item.quantity_planned ?? ""),
       coefficient: String(item.coefficient ?? "1"),
       currency: String(item.currency ?? "1"),
@@ -257,6 +410,10 @@ export default function Estimates() {
       price: item.price == null ? "" : String(item.price),
       comment: item.comment || ""
     });
+    setInputItemOptionSearch("");
+    setItemOptionSearch("");
+    setPickerSearch("");
+    setShowItemPicker(false);
     setItemModalOpen(true);
   };
 
@@ -264,6 +421,10 @@ export default function Estimates() {
     if (savingItem) return;
     setItemModalOpen(false);
     setItemForm(EMPTY_ITEM_FORM);
+    setInputItemOptionSearch("");
+    setItemOptionSearch("");
+    setPickerSearch("");
+    setShowItemPicker(false);
   };
 
   const handleItemFormChange = (field, value) => {
@@ -271,27 +432,53 @@ export default function Estimates() {
       const next = { ...prev, [field]: value };
 
       if (field === "item_type") {
+        next.material_type = "";
+        next.service_type = "";
         next.material_id = "";
         next.service_id = "";
+        next.unit_of_measure = "";
+        setInputItemOptionSearch("");
+        setItemOptionSearch("");
+        setPickerSearch("");
       }
 
       if (field === "stage_id") {
         next.subsection_id = "";
       }
 
+      if (field === "material_type") {
+        next.material_type = value;
+        next.material_id = "";
+        next.unit_of_measure = "";
+        setInputItemOptionSearch("");
+        setItemOptionSearch("");
+        setPickerSearch("");
+      }
+
+      if (field === "service_type") {
+        next.service_type = value;
+        next.service_id = "";
+        next.unit_of_measure = "";
+        setInputItemOptionSearch("");
+        setItemOptionSearch("");
+        setPickerSearch("");
+      }
+
       if (field === "material_id") {
         const material = getMaterialById(value);
         next.material_id = value;
+        next.material_type = material?.type ? String(material.type) : next.material_type;
         if (material?.unit_of_measure) {
-          next.unit_of_measure = material.unit_of_measure;
+          next.unit_of_measure = String(material.unit_of_measure);
         }
       }
 
       if (field === "service_id") {
         const service = getServiceById(value);
         next.service_id = value;
+        next.service_type = service?.service_type ? String(service.service_type) : next.service_type;
         if (service?.unit_of_measure) {
-          next.unit_of_measure = service.unit_of_measure;
+          next.unit_of_measure = String(service.unit_of_measure);
         }
       }
 
@@ -352,7 +539,7 @@ export default function Estimates() {
 
     const material = Number(itemForm.item_type) === 1 ? getMaterialById(itemForm.material_id) : null;
     const service = Number(itemForm.item_type) === 2 ? getServiceById(itemForm.service_id) : null;
-    const unitOfMeasure = material?.unit_of_measure || service?.unit_of_measure;
+    const unitOfMeasure = itemForm.unit_of_measure || material?.unit_of_measure || service?.unit_of_measure;
 
     if (!unitOfMeasure) {
       toast.error("Не удалось определить единицу измерения");
@@ -366,7 +553,9 @@ export default function Estimates() {
         const res = await putRequest(`/materialEstimateItems/update/${itemForm.id}`, {
           stage_id: Number(itemForm.stage_id),
           subsection_id: Number(itemForm.subsection_id),
-          entry_type: Number(itemForm.entry_type),
+          entry_type: 1,
+          material_type: Number(itemForm.item_type) === 1 && itemForm.material_type ? Number(itemForm.material_type) : null,
+          service_type: Number(itemForm.item_type) === 2 && itemForm.service_type ? Number(itemForm.service_type) : null,
           quantity_planned: toNumber(itemForm.quantity_planned),
           coefficient: toNumber(itemForm.coefficient, 1),
           currency: itemForm.currency ? Number(itemForm.currency) : null,
@@ -386,10 +575,10 @@ export default function Estimates() {
             stage_id: Number(itemForm.stage_id),
             subsection_id: Number(itemForm.subsection_id),
             item_type: Number(itemForm.item_type),
-            entry_type: Number(itemForm.entry_type),
-            service_type: Number(itemForm.item_type) === 2 ? service?.service_type || null : null,
+            entry_type: 1,
+            service_type: Number(itemForm.item_type) === 2 && itemForm.service_type ? Number(itemForm.service_type) : null,
             service_id: Number(itemForm.item_type) === 2 ? Number(itemForm.service_id) : null,
-            material_type: Number(itemForm.item_type) === 1 ? material?.type || null : null,
+            material_type: Number(itemForm.item_type) === 1 && itemForm.material_type ? Number(itemForm.material_type) : null,
             material_id: Number(itemForm.item_type) === 1 ? Number(itemForm.material_id) : null,
             unit_of_measure: Number(unitOfMeasure),
             quantity_planned: toNumber(itemForm.quantity_planned),
@@ -447,12 +636,16 @@ export default function Estimates() {
 
   const pageClass = `space-y-4 pb-20 ${themeText.page(isDark)}`;
   const inputClass = themeControl.input(isDark);
+  const modalInputClass = themeControl.modalInput(isDark);
   const panelClass = `${themeSurface.panel(isDark)} p-3`;
   const itemCardClass = `${themeSurface.panelMuted(isDark)} rounded px-2 py-1.5 text-xs`;
   const stickyClass = themeSurface.sticky(isDark);
   const modalBackdropClass = "fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 md:items-center md:p-4";
   const modalCardClass = `${themeSurface.panel(isDark)} w-full max-w-2xl rounded-t-2xl p-4 md:rounded-2xl`;
   const modalLabelClass = `mb-1 block text-[11px] font-medium ${themeText.secondary(isDark)}`;
+  const modalSelectClass = isDark
+    ? "w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white"
+    : "w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-black";
 
   const renderItemCard = (item) => {
     const sum = calcItemSum(item);
@@ -543,15 +736,15 @@ export default function Estimates() {
               )}
               {canManageEstimate && (
                 <>
-              <div className={isDark ? "text-sm text-gray-400" : "text-sm text-gray-600"}>Смета для блока не найдена.</div>
-              <button
-                onClick={createEstimate}
-                disabled={creatingEstimate}
-                className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm text-white disabled:opacity-60"
-              >
-                <Plus size={16} />
-                {creatingEstimate ? "Создание..." : "Создать смету"}
-              </button>
+                  <div className={isDark ? "text-sm text-gray-400" : "text-sm text-gray-600"}>Смета для блока не найдена.</div>
+                  <button
+                    onClick={createEstimate}
+                    disabled={creatingEstimate}
+                    className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm text-white disabled:opacity-60"
+                  >
+                    <Plus size={16} />
+                    {creatingEstimate ? "Создание..." : "Создать смету"}
+                  </button>
                 </>
               )}
             </div>
@@ -565,10 +758,10 @@ export default function Estimates() {
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{estimate.name}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[11px] ${Number(estimate.status) === 2
-                      ? "bg-emerald-100 text-emerald-700"
-                      : isDark
-                        ? "bg-gray-800 text-gray-200"
-                        : "bg-slate-100 text-slate-700"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : isDark
+                      ? "bg-gray-800 text-gray-200"
+                      : "bg-slate-100 text-slate-700"
                     }`}>
                     {estimateStatusLabel || `Статус #${estimate.status}`}
                   </span>
@@ -646,11 +839,11 @@ export default function Estimates() {
               </button>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="col-span-2 hidden">
                 <span className={modalLabelClass}>Тип позиции</span>
                 <select
-                  className={inputClass}
+                  className={modalSelectClass}
                   value={itemForm.item_type}
                   onChange={(e) => handleItemFormChange("item_type", e.target.value)}
                   disabled={Boolean(itemForm.id)}
@@ -660,10 +853,28 @@ export default function Estimates() {
                 </select>
               </label>
 
-              <label>
+              <label className="col-span-2">
+                <span className={modalLabelClass}>Тип записи</span>
+                <Select
+                  styles={getSelectStyles(isDark)}
+                  options={[
+                    { value: "1", label: "Материал" },
+                    { value: "2", label: "Услуга" }
+                  ]}
+                  value={[
+                    { value: "1", label: "Материал" },
+                    { value: "2", label: "Услуга" }
+                  ].find((option) => Number(option.value) === Number(itemForm.item_type))}
+                  onChange={(option) => handleItemFormChange("item_type", option?.value || "1")}
+                  isSearchable={false}
+                  isDisabled={Boolean(itemForm.id)}
+                />
+              </label>
+
+              <label className="hidden">
                 <span className={modalLabelClass}>Этап</span>
                 <select
-                  className={inputClass}
+                  className={modalSelectClass}
                   value={itemForm.stage_id}
                   onChange={(e) => handleItemFormChange("stage_id", e.target.value)}
                 >
@@ -675,9 +886,20 @@ export default function Estimates() {
               </label>
 
               <label>
+                <span className={modalLabelClass}>Этап</span>
+                <Select
+                  styles={getSelectStyles(isDark)}
+                  options={stageOptions}
+                  value={stageOptions.find((option) => String(option.value) === String(itemForm.stage_id)) || null}
+                  onChange={(option) => handleItemFormChange("stage_id", option ? String(option.value) : "")}
+                  placeholder="Выберите..."
+                />
+              </label>
+
+              <label className="hidden">
                 <span className={modalLabelClass}>Подэтап</span>
                 <select
-                  className={inputClass}
+                  className={modalSelectClass}
                   value={itemForm.subsection_id}
                   onChange={(e) => handleItemFormChange("subsection_id", e.target.value)}
                 >
@@ -687,24 +909,46 @@ export default function Estimates() {
                   ))}
                 </select>
               </label>
-
               <label>
-                <span className={modalLabelClass}>Тип записи</span>
-                <select
-                  className={inputClass}
-                  value={itemForm.entry_type}
-                  onChange={(e) => handleItemFormChange("entry_type", e.target.value)}
-                >
-                  <option value={1}>Основной</option>
-                  <option value={2}>Дополнительный</option>
-                </select>
+                <span className={modalLabelClass}>Подэтап</span>
+                <Select
+                  styles={getSelectStyles(isDark)}
+                  options={subsectionOptions}
+                  value={subsectionOptions.find((option) => String(option.value) === String(itemForm.subsection_id)) || null}
+                  onChange={(option) => handleItemFormChange("subsection_id", option ? String(option.value) : "")}
+                  placeholder="Выберите..."
+                />
               </label>
 
-              <label className="md:col-span-2">
+              {Number(itemForm.item_type) === 1 ? (
+                <label className="col-span-2">
+                  <span className={modalLabelClass}>Тип материала</span>
+                  <Select
+                    styles={getSelectStyles(isDark)}
+                    options={materialTypeOptions}
+                    value={materialTypeOptions.find((option) => String(option.value) === String(itemForm.material_type)) || null}
+                    onChange={(option) => handleItemFormChange("material_type", option ? String(option.value) : "")}
+                    placeholder="Тип материала..."
+                  />
+                </label>
+              ) : (
+                <label className="col-span-2">
+                  <span className={modalLabelClass}>Тип услуги</span>
+                  <Select
+                    styles={getSelectStyles(isDark)}
+                    options={serviceTypeOptions}
+                    value={serviceTypeOptions.find((option) => String(option.value) === String(itemForm.service_type)) || null}
+                    onChange={(option) => handleItemFormChange("service_type", option ? String(option.value) : "")}
+                    placeholder="Тип услуги..."
+                  />
+                </label>
+              )}
+
+              <label className="col-span-2 hidden">
                 <span className={modalLabelClass}>{Number(itemForm.item_type) === 1 ? "Материал" : "Услуга"}</span>
                 {Number(itemForm.item_type) === 1 ? (
                   <select
-                    className={inputClass}
+                    className={modalSelectClass}
                     value={itemForm.material_id}
                     onChange={(e) => handleItemFormChange("material_id", e.target.value)}
                     disabled={Boolean(itemForm.id)}
@@ -716,7 +960,7 @@ export default function Estimates() {
                   </select>
                 ) : (
                   <select
-                    className={inputClass}
+                    className={modalSelectClass}
                     value={itemForm.service_id}
                     onChange={(e) => handleItemFormChange("service_id", e.target.value)}
                     disabled={Boolean(itemForm.id)}
@@ -729,43 +973,100 @@ export default function Estimates() {
                 )}
               </label>
 
-              <label>
-                <span className={modalLabelClass}>Количество</span>
-                <input
-                  className={inputClass}
-                  value={itemForm.quantity_planned}
-                  onChange={(e) => handleItemFormChange("quantity_planned", e.target.value)}
-                  placeholder="0"
-                />
+              <label className="col-span-2">
+                <span className={modalLabelClass}>{Number(itemForm.item_type) === 1 ? "Материал" : "Услуга"}</span>
+                <div
+                  onClick={() => !itemForm.id && setShowItemPicker(true)}
+                  className={`${themeSurface.panelMuted(isDark)} cursor-pointer rounded border ${isDark ? "border-gray-700" : "border-slate-300"} px-3 py-2 text-sm ${
+                    itemForm.id ? "cursor-not-allowed opacity-60" : ""
+                  }`}
+                >
+                  {Number(itemForm.item_type) === 1 ? (
+                    itemForm.material_id ? (
+                      <span className={themeText.primary(isDark)}>
+                        {filteredMaterialOptions.find((item) => String(item.value) === String(itemForm.material_id))?.label ||
+                          materialOptions.find((item) => String(item.value) === String(itemForm.material_id))?.label}
+                      </span>
+                    ) : (
+                      <span className={themeText.secondary(isDark)}>Материал...</span>
+                    )
+                  ) : itemForm.service_id ? (
+                    <span className={themeText.primary(isDark)}>
+                      {filteredServiceOptions.find((item) => String(item.value) === String(itemForm.service_id))?.label ||
+                        serviceOptions.find((item) => String(item.value) === String(itemForm.service_id))?.label}
+                    </span>
+                  ) : (
+                    <span className={themeText.secondary(isDark)}>Услуга...</span>
+                  )}
+                </div>
               </label>
 
-              <label>
-                <span className={modalLabelClass}>Коэффициент</span>
-                <input
-                  className={inputClass}
-                  value={itemForm.coefficient}
-                  onChange={(e) => handleItemFormChange("coefficient", e.target.value)}
-                  placeholder="1"
-                />
+              <label className="col-span-2 hidden">
+                <span className={modalLabelClass}>{Number(itemForm.item_type) === 1 ? "Материал" : "Услуга"}</span>
+                {Number(itemForm.item_type) === 1 ? (
+                  <Select
+                    styles={getSelectStyles(isDark)}
+                    options={filteredMaterialOptions}
+                    value={filteredMaterialOptions.find((option) => String(option.value) === String(itemForm.material_id)) || null}
+                    onChange={(option) => handleItemFormChange("material_id", option ? String(option.value) : "")}
+                    placeholder="Выберите материал"
+                    isSearchable
+                    noOptionsMessage={() => "Ничего не найдено"}
+                    isDisabled={Boolean(itemForm.id)}
+                  />
+                ) : (
+                  <Select
+                    styles={getSelectStyles(isDark)}
+                    options={filteredServiceOptions}
+                    value={filteredServiceOptions.find((option) => String(option.value) === String(itemForm.service_id)) || null}
+                    onChange={(option) => handleItemFormChange("service_id", option ? String(option.value) : "")}
+                    placeholder="Выберите услугу"
+                    isSearchable
+                    noOptionsMessage={() => "Ничего не найдено"}
+                    isDisabled={Boolean(itemForm.id)}
+                  />
+                )}
               </label>
+
+              <div className="col-span-2 grid grid-cols-2 gap-2">
+                <label>
+                  <span className={modalLabelClass}>Количество</span>
+                  <input
+                    className={modalInputClass}
+                    value={itemForm.quantity_planned}
+                    onChange={(e) => handleItemFormChange("quantity_planned", e.target.value)}
+                    placeholder="0"
+                  />
+                </label>
+
+                <label>
+                  <span className={modalLabelClass}>Ед. изм.</span>
+                  <Select
+                    styles={getSelectStyles(isDark)}
+                    options={getOptions("unitsOfMeasure")}
+                    value={getOptions("unitsOfMeasure").find((option) => String(option.value) === String(itemForm.unit_of_measure)) || null}
+                    onChange={(option) => handleItemFormChange("unit_of_measure", option ? String(option.value) : "")}
+                    placeholder="Ед. изм..."
+                    isSearchable={false}
+                  />
+                </label>
+              </div>
 
               <label>
                 <span className={modalLabelClass}>Валюта</span>
-                <select
-                  className={inputClass}
-                  value={itemForm.currency}
-                  onChange={(e) => handleItemFormChange("currency", e.target.value)}
-                >
-                  {(dictionaries.currencies || []).map((currency) => (
-                    <option key={currency.id} value={currency.id}>{currency.code || currency.label}</option>
-                  ))}
-                </select>
+                <Select
+                  styles={getSelectStyles(isDark)}
+                  options={currencyOptions}
+                  value={currencyOptions.find((option) => String(option.value) === String(itemForm.currency)) || null}
+                  onChange={(option) => handleItemFormChange("currency", option ? String(option.value) : "")}
+                  isSearchable={false}
+                />
               </label>
 
               <label>
                 <span className={modalLabelClass}>Курс</span>
                 <input
-                  className={inputClass}
+                  className={modalSelectClass}
                   value={Number(itemForm.currency) === 1 ? "1" : itemForm.currency_rate}
                   onChange={(e) => handleItemFormChange("currency_rate", e.target.value)}
                   placeholder="Курс"
@@ -776,17 +1077,27 @@ export default function Estimates() {
               <label>
                 <span className={modalLabelClass}>Цена</span>
                 <input
-                  className={inputClass}
+                  className={modalInputClass}
                   value={itemForm.price}
                   onChange={(e) => handleItemFormChange("price", e.target.value)}
                   placeholder="0"
                 />
               </label>
 
-              <label className="md:col-span-2">
+              <label>
+                <span className={modalLabelClass}>Коэффициент</span>
+                <input
+                  className={modalInputClass}
+                  value={itemForm.coefficient}
+                  onChange={(e) => handleItemFormChange("coefficient", e.target.value)}
+                  placeholder="1"
+                />
+              </label>
+
+              <label className="col-span-2">
                 <span className={modalLabelClass}>Комментарий</span>
                 <input
-                  className={inputClass}
+                  className={modalInputClass}
                   value={itemForm.comment}
                   onChange={(e) => handleItemFormChange("comment", e.target.value)}
                   placeholder="Комментарий"
@@ -823,6 +1134,50 @@ export default function Estimates() {
           </div>
         </div>
       )}
+
+      {showItemPicker && (
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end" onClick={() => setShowItemPicker(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`${themeSurface.page(isDark)} relative flex h-[75vh] w-full flex-col rounded-t-2xl`}
+          >
+            <div className={`mx-auto my-2 h-1 w-10 rounded-full ${isDark ? "bg-gray-600" : "bg-slate-300"}`} />
+
+            <div className="px-4 pb-2">
+              <input
+                placeholder="Поиск..."
+                value={pickerSearch}
+                onChange={(e) => setPickerSearch(e.target.value)}
+                className={modalInputClass}
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-2">
+              {visiblePickerOptions.map((item) => (
+                <div
+                  key={item.value}
+                  onClick={() => {
+                    if (Number(itemForm.item_type) === 1) {
+                      handleItemFormChange("material_id", String(item.value));
+                    } else {
+                      handleItemFormChange("service_id", String(item.value));
+                    }
+
+                    setShowItemPicker(false);
+                    setPickerSearch("");
+                  }}
+                  className={`cursor-pointer border-b px-3 py-3 text-sm ${themeBorder.divider(isDark)}`}
+                >
+                  {item.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

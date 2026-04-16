@@ -113,8 +113,8 @@ export default function MaterialWriteOffs() {
 
   const getWorkItemLabel = useCallback(
     (item) => {
+      console.log("IT", item)
       const serviceName =
-        item?.name ||
         (dictionaries.services || []).find((service) => service.id === Number(item?.service_id))?.label ||
         `Работа #${item?.id}`;
       const stageName =
@@ -181,10 +181,10 @@ export default function MaterialWriteOffs() {
     const query = search.trim().toLowerCase();
     const filtered = query
       ? (res.data || []).filter((item) => {
-          const workCode = String(item.work_performed?.code || "").toLowerCase();
-          const workName = String(getWorkItemLabel(item.work_performed_item || {})).toLowerCase();
-          return workCode.includes(query) || workName.includes(query);
-        })
+        const workCode = String(item.work_performed?.code || "").toLowerCase();
+        const workName = String(getWorkItemLabel(item.work_performed_item || {})).toLowerCase();
+        return workCode.includes(query) || workName.includes(query);
+      })
       : res.data || [];
 
     setItems(filtered);
@@ -204,13 +204,13 @@ export default function MaterialWriteOffs() {
     const query = search.trim().toLowerCase();
     const filtered = query
       ? (res.data || []).filter((item) => {
-          const note = String(item.note || "").toLowerCase();
-          const materialNames = (item.items || [])
-            .map((detail) => detail.material?.name || "")
-            .join(" ")
-            .toLowerCase();
-          return note.includes(query) || materialNames.includes(query) || String(item.id).includes(query);
-        })
+        const note = String(item.note || "").toLowerCase();
+        const materialNames = (item.items || [])
+          .map((detail) => detail.material?.name || "")
+          .join(" ")
+          .toLowerCase();
+        return note.includes(query) || materialNames.includes(query) || String(item.id).includes(query);
+      })
       : res.data || [];
 
     setItems(filtered);
@@ -413,9 +413,8 @@ export default function MaterialWriteOffs() {
 
   const renderStatus = (status) => (
     <span
-      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${
-        (STATUS_STYLES[status] || STATUS_STYLES[1])[isDark ? "dark" : "light"]
-      }`}
+      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${(STATUS_STYLES[status] || STATUS_STYLES[1])[isDark ? "dark" : "light"]
+        }`}
     >
       {getStatusLabel(status)}
     </span>
@@ -487,9 +486,8 @@ export default function MaterialWriteOffs() {
         {renderSignButtons(item)}
 
         <div
-          className={`overflow-hidden transition-all duration-300 ${
-            expanded ? "mt-2 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
-          }`}
+          className={`overflow-hidden transition-all duration-300 ${expanded ? "mt-2 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
+            }`}
         >
           <div className={`space-y-2 border-t pt-2 ${themeBorder.divider(isDark)}`}>
             <div className={sectionTitleClass}>Материалы</div>
@@ -542,9 +540,8 @@ export default function MaterialWriteOffs() {
         {renderSignButtons(item)}
 
         <div
-          className={`overflow-hidden transition-all duration-300 ${
-            expanded ? "mt-2 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
-          }`}
+          className={`overflow-hidden transition-all duration-300 ${expanded ? "mt-2 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
+            }`}
         >
           <div className={`space-y-2 border-t pt-2 ${themeBorder.divider(isDark)}`}>
             <div className={sectionTitleClass}>Материалы</div>

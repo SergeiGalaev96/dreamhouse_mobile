@@ -295,7 +295,7 @@ export default function PurchaseOrdersCreate() {
 
     const payload = {
       project_id: Number(projectId),
-      block_id: Number(rawItems[0]?.block_id || 1),
+      block_id: Number(blockId),
       created_user_id: 1,
       items: purchaseItems
     };

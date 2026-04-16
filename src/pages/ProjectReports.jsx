@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { ChevronDown, FileSpreadsheet, FileText, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import { Capacitor } from "@capacitor/core";
@@ -9,7 +9,7 @@ import { getAuthToken } from "../utils/authStorage";
 import { reportsFallbackURLs } from "../api/axios";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { useTheme } from "../context/ThemeContext";
-import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
+import { themeSurface, themeText } from "../utils/themeStyles";
 
 const REPORT_OPTIONS = [
   { value: "form2", label: "Форма 2" },
@@ -26,11 +26,6 @@ const REPORT_FORMATS = [
   { format: "docx", label: "Word", icon: FileText },
   { format: "xlsx", label: "Excel", icon: FileSpreadsheet }
 ];
-
-const REPORT_SUPPORTED_FORMATS = {
-  form2: ["xlsx"],
-  form29: ["pdf", "docx", "xlsx"]
-};
 
 const getMonthRange = (monthValue) => {
   if (!monthValue) return null;
@@ -63,19 +58,20 @@ const getFilenameFromDisposition = (disposition, fallback) => {
   return filenameMatch?.[1] || fallback;
 };
 
-const blobToBase64 = (blob) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onloadend = () => {
-    const result = reader.result;
-    if (typeof result !== "string") {
-      reject(new Error("Failed to convert blob"));
-      return;
-    }
-    resolve(result.split(",")[1] || "");
-  };
-  reader.onerror = reject;
-  reader.readAsDataURL(blob);
-});
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Failed to convert blob"));
+        return;
+      }
+      resolve(result.split(",")[1] || "");
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 
 const saveNativeReport = async (blob, filename) => {
   const base64Data = await blobToBase64(blob);
@@ -88,12 +84,11 @@ const saveNativeReport = async (blob, filename) => {
 
 export default function ProjectReports() {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   const { isDark } = useTheme();
 
   const [project, setProject] = useState(null);
   const [dictionaries, setDictionaries] = useState({});
-  const [reportType, setReportType] = useState("form29");
+  const [reportType, setReportType] = useState("form2");
   const [selectedBlockId, setSelectedBlockId] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -113,7 +108,9 @@ export default function ProjectReports() {
       }
 
       setDictionaries(dicts || {});
-      const projectBlocks = (dicts?.projectBlocks || []).filter((item) => Number(item.project_id) === Number(projectId));
+      const projectBlocks = (dicts?.projectBlocks || []).filter(
+        (item) => Number(item.project_id) === Number(projectId)
+      );
       if (projectBlocks[0]?.id) {
         setSelectedBlockId(String(projectBlocks[0].id));
       }
@@ -123,7 +120,10 @@ export default function ProjectReports() {
   }, [projectId]);
 
   const blocks = useMemo(
-    () => (dictionaries.projectBlocks || []).filter((item) => Number(item.project_id) === Number(projectId)),
+    () =>
+      (dictionaries.projectBlocks || []).filter(
+        (item) => Number(item.project_id) === Number(projectId)
+      ),
     [dictionaries.projectBlocks, projectId]
   );
 
@@ -133,7 +133,6 @@ export default function ProjectReports() {
   );
 
   const currentReportLabel = REPORT_LABELS[reportType] || "Отчет";
-  const supportedFormats = REPORT_SUPPORTED_FORMATS[reportType] || ["xlsx"];
 
   const loadPreview = async () => {
     const range = getMonthRange(selectedMonth);
@@ -192,14 +191,8 @@ export default function ProjectReports() {
       return;
     }
 
-    if (!supportedFormats.includes(format)) {
-      toast.error(`Для ${currentReportLabel} пока доступен только Excel`);
-      return;
-    }
-
     try {
       setDownloadingFormat(format);
-
       let res = null;
       let lastError = null;
 
@@ -220,8 +213,8 @@ export default function ProjectReports() {
           }
 
           lastError = new Error(errorText || `HTTP ${res.status}`);
-        } catch (e) {
-          lastError = e;
+        } catch (error) {
+          lastError = error;
         }
       }
 
@@ -260,35 +253,24 @@ export default function ProjectReports() {
 
   const pageClass = `${themeText.page(isDark)} space-y-4 pb-24`;
   const panelClass = `${themeSurface.panel(isDark)} p-4`;
-  const inputClass = themeControl.input(isDark);
-  const buttonClass = "rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-60";
-  const secondaryButtonClass = isDark
-    ? "rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800"
-    : "rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-black hover:bg-slate-50";
+  const compactFieldClass = isDark
+    ? "w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2.5 text-sm text-white focus:border-blue-500 focus:outline-none"
+    : "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-black focus:border-blue-500 focus:outline-none";
+  const buttonClass =
+    "rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-60";
   const mutedTextClass = themeText.secondary(isDark);
+  const fieldLabelClass = `mb-1.5 block pl-1 text-[11px] font-medium uppercase tracking-[0.08em] ${mutedTextClass}`;
 
   return (
     <div className={pageClass}>
-      <div className={panelClass}>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold">Отчеты проекта</h1>
-            <div className={`text-sm ${mutedTextClass}`}>{project?.name || `Проект #${projectId}`}</div>
-          </div>
-
-          <button
-            onClick={() => navigate(`/projects/${projectId}`)}
-            className={secondaryButtonClass}
-          >
-            Назад
-          </button>
-        </div>
+      <div className="px-1">
+        <h1 className="text-lg font-semibold">{`Отчеты: ${project?.name || `Проект #${projectId}`}`}</h1>
       </div>
 
       <div className={`${panelClass} space-y-4`}>
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-1">
-            <div className={`text-xs ${mutedTextClass}`}>Тип отчета</div>
+        <div className="grid gap-2.5 md:grid-cols-3">
+          <label className="block">
+            <span className={fieldLabelClass}>Тип отчета</span>
             <select
               value={reportType}
               onChange={(e) => {
@@ -296,16 +278,18 @@ export default function ProjectReports() {
                 setPreviewHtml("");
                 setDownloadMenuOpen(false);
               }}
-              className={inputClass}
+              className={compactFieldClass}
             >
               {REPORT_OPTIONS.map((item) => (
-                <option key={item.value} value={item.value}>{item.label}</option>
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
               ))}
             </select>
-          </div>
+          </label>
 
-          <div className="space-y-1">
-            <div className={`text-xs ${mutedTextClass}`}>Блок</div>
+          <label className="block">
+            <span className={fieldLabelClass}>Блок</span>
             <select
               value={selectedBlockId}
               onChange={(e) => {
@@ -313,17 +297,19 @@ export default function ProjectReports() {
                 setPreviewHtml("");
                 setDownloadMenuOpen(false);
               }}
-              className={inputClass}
+              className={compactFieldClass}
             >
               <option value="">Выберите блок</option>
               {blocks.map((block) => (
-                <option key={block.id} value={block.id}>{block.label}</option>
+                <option key={block.id} value={block.id}>
+                  {block.label}
+                </option>
               ))}
             </select>
-          </div>
+          </label>
 
-          <div className="space-y-1">
-            <div className={`text-xs ${mutedTextClass}`}>Месяц</div>
+          <label className="block">
+            <span className={fieldLabelClass}>Месяц</span>
             <input
               type="month"
               value={selectedMonth}
@@ -332,17 +318,13 @@ export default function ProjectReports() {
                 setPreviewHtml("");
                 setDownloadMenuOpen(false);
               }}
-              className={inputClass}
+              className={compactFieldClass}
             />
-          </div>
+          </label>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={loadPreview}
-            disabled={loadingPreview}
-            className={buttonClass}
-          >
+          <button onClick={loadPreview} disabled={loadingPreview} className={buttonClass}>
             {loadingPreview ? "Формирование..." : "Показать"}
           </button>
 
@@ -357,27 +339,28 @@ export default function ProjectReports() {
             </button>
 
             {downloadMenuOpen && (
-              <div className={`absolute right-0 z-20 mt-2 min-w-[170px] overflow-hidden rounded-lg border shadow-lg ${
-                isDark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white"
-              }`}>
+              <div
+                className={`absolute right-0 z-20 mt-2 min-w-[170px] overflow-hidden rounded-lg border shadow-lg ${
+                  isDark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white"
+                }`}
+              >
                 {REPORT_FORMATS.map(({ format, label, icon: Icon }) => {
-                  const supported = supportedFormats.includes(format);
                   const loading = downloadingFormat === format;
 
                   return (
                     <button
                       key={format}
                       onClick={() => {
-                        if (supported && !loading) {
+                        if (!loading) {
                           setDownloadMenuOpen(false);
                         }
                         downloadReport(format);
                       }}
-                      disabled={loading || !supported}
+                      disabled={loading}
                       className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm disabled:opacity-60 ${
                         isDark ? "text-white hover:bg-gray-800" : "text-black hover:bg-slate-50"
                       }`}
-                      title={supported ? `Скачать ${label}` : `Для ${currentReportLabel} пока недоступно`}
+                      title={`Скачать ${label}`}
                     >
                       <Icon size={16} />
                       {loading ? "Скачивание..." : label}

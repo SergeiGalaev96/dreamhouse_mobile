@@ -1,17 +1,22 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { postRequest } from "../api/request";
+import { useContext, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import toast from "react-hot-toast";
+import { ClipboardList, Plus, Search } from "lucide-react";
+import { postRequest, putRequest } from "../api/request";
+import { AuthContext } from "../auth/AuthContext";
+import PullToRefresh from "../components/PullToRefresh";
+import { useTheme } from "../context/ThemeContext";
 import { formatDateTime } from "../utils/date";
 import { loadDictionaries } from "../utils/dictionaryLoader";
-import { ClipboardList, Plus, Search } from "lucide-react";
-import { useTheme } from "../context/ThemeContext";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
-import PullToRefresh from "../components/PullToRefresh";
+
+const PURCHASE_STATUS_EDITOR_ROLE_IDS = [1, 7, 10, 11];
 
 export default function PurchaseOrdersList() {
   const { projectId, blockId } = useParams();
   const navigate = useNavigate();
   const { isDark } = useTheme();
+  const { user } = useContext(AuthContext);
 
   const [orders, setOrders] = useState([]);
   const [pagination, setPagination] = useState(null);
@@ -29,6 +34,7 @@ export default function PurchaseOrdersList() {
   const inactiveTabClass = isDark ? "bg-gray-800 text-white" : "border border-slate-300 bg-white text-black";
   const pagerButtonClass = themeControl.subtleButton(isDark);
   const pagerTextClass = `text-sm ${themeText.secondary(isDark)}`;
+  const canManagePurchaseStatuses = PURCHASE_STATUS_EDITOR_ROLE_IDS.includes(Number(user?.role_id));
 
   useEffect(() => {
     loadOrders();
@@ -55,7 +61,7 @@ export default function PurchaseOrdersList() {
     });
 
     if (res.success) {
-      setOrders(res.data);
+      setOrders(res.data || []);
       setPagination(res.pagination);
     }
   };
@@ -90,6 +96,20 @@ export default function PurchaseOrdersList() {
     setSearch(inputSearch);
   };
 
+  const updateStatus = async (id, status) => {
+    try {
+      const res = await putRequest(`/purchaseOrderItems/update/${id}`, { status });
+      if (res.success) {
+        toast.success(res.message);
+        await loadOrders();
+      } else {
+        toast.error(res.message);
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.message || "Ошибка");
+    }
+  };
+
   return (
     <div className={pageClass}>
       <div className="flex items-center gap-2">
@@ -98,17 +118,49 @@ export default function PurchaseOrdersList() {
       </div>
 
       <div className="flex gap-2">
-        <button onClick={() => { setTab("new"); setPage(1); }} className={`flex-1 rounded py-2 ${tab === "new" ? "bg-blue-600 text-white" : inactiveTabClass}`}>Новые</button>
-        <button onClick={() => { setTab("active"); setPage(1); }} className={`flex-1 rounded py-2 ${tab === "active" ? "bg-blue-600 text-white" : inactiveTabClass}`}>В доставке</button>
-        <button onClick={() => { setTab("done"); setPage(1); }} className={`flex-1 rounded py-2 ${tab === "done" ? "bg-blue-600 text-white" : inactiveTabClass}`}>Завершенные</button>
+        <button
+          onClick={() => {
+            setTab("new");
+            setPage(1);
+          }}
+          className={`flex-1 rounded py-2 ${tab === "new" ? "bg-blue-600 text-white" : inactiveTabClass}`}
+        >
+          Новые
+        </button>
+        <button
+          onClick={() => {
+            setTab("active");
+            setPage(1);
+          }}
+          className={`flex-1 rounded py-2 ${tab === "active" ? "bg-blue-600 text-white" : inactiveTabClass}`}
+        >
+          В доставке
+        </button>
+        <button
+          onClick={() => {
+            setTab("done");
+            setPage(1);
+          }}
+          className={`flex-1 rounded py-2 ${tab === "done" ? "bg-blue-600 text-white" : inactiveTabClass}`}
+        >
+          Завершенные
+        </button>
       </div>
 
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search size={16} className={`absolute left-3 top-3 ${themeText.secondary(isDark)}`} />
-          <input value={inputSearch} onChange={(e) => setInputSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="Поиск..." className={inputClass} />
+          <input
+            value={inputSearch}
+            onChange={(e) => setInputSearch(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            placeholder="Поиск..."
+            className={inputClass}
+          />
         </div>
-        <button onClick={handleSearch} className="rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500">Go</button>
+        <button onClick={handleSearch} className="rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500">
+          Go
+        </button>
       </div>
 
       <PullToRefresh className="space-y-2.5" onRefresh={loadOrders}>
@@ -136,10 +188,14 @@ export default function PurchaseOrdersList() {
                 </div>
               </div>
 
-              <div className={`overflow-hidden transition-all duration-300 ${expanded ? "mt-3 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"}`}>
+              <div
+                className={`overflow-hidden transition-all duration-300 ${
+                  expanded ? "mt-3 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
+                }`}
+              >
                 <div className={`space-y-2 border-t pt-3 ${isDark ? "border-gray-800" : "border-slate-200"}`}>
                   {order.items?.map((item) => (
-                    <div key={item.id} className={itemCardClass}>
+                    <div key={item.id} className={`${itemCardClass} relative`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-1 flex-col gap-1">
                           <span className={`truncate text-sm font-semibold ${isDark ? "text-gray-100" : "text-gray-900"}`}>
@@ -147,7 +203,10 @@ export default function PurchaseOrdersList() {
                           </span>
 
                           <span className={themeText.secondary(isDark)}>
-                            Поставщик: <span className={isDark ? "text-gray-200" : "text-gray-800"}>{getDictName("suppliers", item.supplier_id)}</span>
+                            Поставщик:{" "}
+                            <span className={isDark ? "text-gray-200" : "text-gray-800"}>
+                              {getDictName("suppliers", item.supplier_id)}
+                            </span>
                           </span>
 
                           <span className={themeText.secondary(isDark)}>
@@ -160,7 +219,11 @@ export default function PurchaseOrdersList() {
                               Сумма: <span className="font-medium text-green-500">{item.summ}</span>
                             </span>
 
-                            <span className={`absolute bottom-2 right-2 rounded px-2 py-[2px] text-[11px] ${poStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"}`}>
+                            <span
+                              className={`absolute bottom-2 right-2 rounded px-2 py-[2px] text-[11px] ${
+                                poStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"
+                              }`}
+                            >
                               {getDictName("purchaseOrderItemStatuses", item.status)}
                             </span>
                           </div>
@@ -168,10 +231,30 @@ export default function PurchaseOrdersList() {
 
                         <div className="flex shrink-0 flex-col items-end">
                           <span className={isDark ? "whitespace-nowrap text-sm text-gray-300" : "whitespace-nowrap text-sm text-gray-700"}>
-                            {item.quantity} <span className={`text-xs ${themeText.muted(isDark)}`}>{getDictName("unitsOfMeasure", item.unit_of_measure)}</span>
+                            {item.quantity}{" "}
+                            <span className={`text-xs ${themeText.muted(isDark)}`}>
+                              {getDictName("unitsOfMeasure", item.unit_of_measure)}
+                            </span>
                           </span>
                         </div>
                       </div>
+
+                      {tab === "new" && canManagePurchaseStatuses && (
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            onClick={() => updateStatus(item.id, 6)}
+                            className="flex-1 rounded bg-red-600 py-1 text-xs text-white"
+                          >
+                            Отменить
+                          </button>
+                          <button
+                            onClick={() => updateStatus(item.id, 2)}
+                            className="flex-1 rounded bg-green-600 py-1 text-xs text-white"
+                          >
+                            На доставку
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -182,9 +265,15 @@ export default function PurchaseOrdersList() {
       </PullToRefresh>
 
       <div className="mt-6 flex justify-center gap-3">
-        <button disabled={!pagination?.hasPrev} onClick={() => setPage(page - 1)} className={pagerButtonClass}>Назад</button>
-        <span className={pagerTextClass}>{pagination?.page || page} / {pagination?.pages || 1}</span>
-        <button disabled={!pagination?.hasNext} onClick={() => setPage(page + 1)} className={pagerButtonClass}>Далее</button>
+        <button disabled={!pagination?.hasPrev} onClick={() => setPage(page - 1)} className={pagerButtonClass}>
+          Назад
+        </button>
+        <span className={pagerTextClass}>
+          {pagination?.page || page} / {pagination?.pages || 1}
+        </span>
+        <button disabled={!pagination?.hasNext} onClick={() => setPage(page + 1)} className={pagerButtonClass}>
+          Далее
+        </button>
       </div>
 
       <button
