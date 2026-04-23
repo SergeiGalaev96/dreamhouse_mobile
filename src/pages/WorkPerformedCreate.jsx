@@ -62,6 +62,20 @@ export default function WorkPerformedCreate() {
     ]).then(setDictionaries);
   }, []);
 
+  useEffect(() => {
+    const parentPath = `/projects/${projectId}/blocks/${blockId}/work-performed`;
+    if (typeof window === "undefined") return undefined;
+
+    window.history.pushState({ workPerformedCreateBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(parentPath, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate, projectId, blockId]);
+
   const getDictName = (dictName, id, field = "label") =>
     dictionaries[dictName]?.find((item) => item.id === Number(id))?.[field] || "";
 

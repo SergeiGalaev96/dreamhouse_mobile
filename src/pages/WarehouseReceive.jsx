@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Warehouse } from "lucide-react";
 import toast from "react-hot-toast";
 import { postRequest } from "../api/request";
@@ -8,9 +8,11 @@ import { loadDictionaries } from "../utils/dictionaryLoader";
 import { numberHandler } from "../utils/numberInput";
 import { useTheme } from "../context/ThemeContext";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
+import PullToRefresh from "../components/PullToRefresh";
 
 export default function WarehouseReceive() {
   const { projectId, warehouseId } = useParams();
+  const navigate = useNavigate();
   const { isDark } = useTheme();
 
   const [orders, setOrders] = useState([]);
@@ -25,6 +27,20 @@ export default function WarehouseReceive() {
     loadOrders();
     loadDicts();
   }, [page]);
+
+  useEffect(() => {
+    const parentPath = `/projects/${projectId}/warehouses/${warehouseId}/warehouse-stocks`;
+    if (typeof window === "undefined") return undefined;
+
+    window.history.pushState({ warehouseReceiveBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(parentPath, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate, projectId, warehouseId]);
 
   const loadOrders = async () => {
     const res = await postRequest("/purchaseOrders/search", {
@@ -148,6 +164,10 @@ export default function WarehouseReceive() {
     }
   };
 
+  const handleRefresh = async () => {
+    await Promise.all([loadOrders(), loadDicts()]);
+  };
+
   const pageClass = `${themeText.page(isDark)} pb-28`;
   const cardClass = themeSurface.card(isDark);
   const subTextClass = themeText.secondary(isDark);
@@ -168,6 +188,7 @@ export default function WarehouseReceive() {
 
   return (
     <div className={`space-y-4 ${pageClass}`}>
+      <PullToRefresh onRefresh={handleRefresh}>
       <div className="flex items-center gap-2">
         <Warehouse size={20} className="text-blue-500" />
         <h1 className={`text-lg font-semibold ${themeText.title(isDark)}`}>
@@ -344,6 +365,7 @@ export default function WarehouseReceive() {
       >
         Принять
       </button>
+      </PullToRefresh>
     </div>
   );
 }

@@ -10,7 +10,9 @@ import {
   Users,
   Truck,
   Wrench,
-  Bell
+  Bell,
+  Boxes,
+  Briefcase
 } from "lucide-react";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AuthContext } from "../auth/AuthContext";
@@ -21,6 +23,7 @@ import { themeMisc, themeSurface } from "../utils/themeStyles";
 
 const ADMIN_ROLE_ID = 1;
 const SUPPLIER_MANAGER_ROLE_IDS = [ADMIN_ROLE_ID, 10, 11];
+const MATERIAL_MANAGER_ROLE_IDS = [1, 10, 11, 4];
 
 export default function MainLayout() {
   const { socket, connected } = useContext(SocketContext);
@@ -39,6 +42,7 @@ export default function MainLayout() {
   const isSupplier = user?.role_id === 13;
   const isAdmin = user?.role_id === ADMIN_ROLE_ID;
   const canManageSuppliers = SUPPLIER_MANAGER_ROLE_IDS.includes(user?.role_id);
+  const canManageMaterials = MATERIAL_MANAGER_ROLE_IDS.includes(Number(user?.role_id));
   const canOpenProjects = !isSupplier;
 
   useEffect(() => {
@@ -420,6 +424,32 @@ export default function MainLayout() {
             <Wrench size={18} />
             Подрядчики
           </button>
+
+          {canManageMaterials && (
+            <button
+              onClick={() => {
+                navigate("/materials");
+                setMenuOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded px-3 py-2 transition ${menuButtonClass}`}
+            >
+              <Boxes size={18} />
+              Материалы
+            </button>
+          )}
+
+          {canManageMaterials && (
+            <button
+              onClick={() => {
+                navigate("/services");
+                setMenuOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded px-3 py-2 transition ${menuButtonClass}`}
+            >
+              <Briefcase size={18} />
+              Услуги
+            </button>
+          )}
 
           <div className="absolute bottom-4 left-4 right-4">
             <button

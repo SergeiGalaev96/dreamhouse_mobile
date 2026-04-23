@@ -1,12 +1,16 @@
 ﻿import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { ClipboardList, Pencil, Plus, Search, X } from "lucide-react";
+import { ClipboardList, Download, Pencil, Plus, Search, X } from "lucide-react";
 import Select from "react-select";
 import toast from "react-hot-toast";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
 import { deleteRequest, getRequest, postRequest, putRequest } from "../api/request";
 import { AuthContext } from "../auth/AuthContext";
+import { getAuthToken } from "../utils/authStorage";
 import { formatDateReverse, formatDateTime } from "../utils/date";
 import { loadDictionaries } from "../utils/dictionaryLoader";
+import { reportsFallbackURLs } from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
 import PullToRefresh from "../components/PullToRefresh";
 import { themeBorder, themeControl, themeSurface, themeText } from "../utils/themeStyles";
@@ -69,6 +73,46 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const getFilenameFromDisposition = (disposition, fallback) => {
+  if (!disposition) return fallback;
+
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return fallback;
+    }
+  }
+
+  const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+  return filenameMatch?.[1] || fallback;
+};
+
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Failed to convert blob"));
+        return;
+      }
+      resolve(result.split(",")[1] || "");
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+const saveNativeReport = async (blob, filename) => {
+  const base64Data = await blobToBase64(blob);
+  return Filesystem.writeFile({
+    path: filename,
+    data: base64Data,
+    directory: Directory.Documents
+  });
+};
+
 export default function Estimates() {
   const { blockId } = useParams();
   const { user } = useContext(AuthContext);
@@ -90,6 +134,7 @@ export default function Estimates() {
   const [showItemPicker, setShowItemPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [rates, setRates] = useState([]);
+  const [downloadingEstimateReport, setDownloadingEstimateReport] = useState(false);
 
   const loadEstimate = useCallback(async () => {
     setLoading(true);
@@ -120,6 +165,7 @@ export default function Estimates() {
           "materialTypes",
           "unitsOfMeasure",
           "currencies",
+          "projectBlocks",
           "blockStages",
           "stageSubsections",
           "services",
@@ -231,6 +277,7 @@ export default function Estimates() {
     () => getDictName("generalStatuses", estimate?.status),
     [estimate?.status, getDictName]
   );
+  const blockLabel = useMemo(() => getDictName("projectBlocks", blockId), [blockId, getDictName]);
 
   const isSignedEstimate = Number(estimate?.status) === 2;
   const canManageEstimate = ESTIMATE_EDITOR_ROLE_IDS.includes(Number(user?.role_id));
@@ -634,6 +681,68 @@ export default function Estimates() {
     }
   };
 
+  const downloadEstimateReport = async () => {
+    if (!estimate) return;
+
+    const token = getAuthToken();
+    try {
+      setDownloadingEstimateReport(true);
+      let res = null;
+      let lastError = null;
+
+      for (const url of reportsFallbackURLs()) {
+        try {
+          const reportUrl = `${url}/report/estimate-stage?blockId=${Number(blockId)}&format=xlsx`;
+          res = await fetch(reportUrl, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          });
+
+          if (res.ok) break;
+
+          let errorText = "";
+          try {
+            errorText = await res.text();
+          } catch {
+            errorText = "";
+          }
+          lastError = new Error(errorText || `HTTP ${res.status}`);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!res?.ok) {
+        throw lastError || new Error("Report service is unavailable");
+      }
+
+      const blob = await res.blob();
+      const filename = getFilenameFromDisposition(
+        res.headers.get("Content-Disposition"),
+        `Смета блок ${blockId}.xlsx`
+      );
+
+      if (Capacitor.isNativePlatform()) {
+        await saveNativeReport(blob, filename);
+        toast.success(`Файл сохранен: ${filename}`);
+      } else {
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+        toast.success("Смета скачана");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(error?.message || "Ошибка скачивания сметы");
+    } finally {
+      setDownloadingEstimateReport(false);
+    }
+  };
+
   const pageClass = `space-y-4 pb-20 ${themeText.page(isDark)}`;
   const inputClass = themeControl.input(isDark);
   const modalInputClass = themeControl.modalInput(isDark);
@@ -698,7 +807,7 @@ export default function Estimates() {
       >
         <div className="flex items-center gap-2">
           <ClipboardList size={20} className="text-green-500" />
-          <h1 className="text-lg font-semibold">Смета</h1>
+          <h1 className="text-lg font-semibold">{`Смета: ${blockLabel || `Блок ${blockId}`}`}</h1>
         </div>
       </div>
 
@@ -755,20 +864,18 @@ export default function Estimates() {
           <div className={panelClass}>
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{estimate.name}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${Number(estimate.status) === 2
-                    ? "bg-emerald-100 text-emerald-700"
-                    : isDark
-                      ? "bg-gray-800 text-gray-200"
-                      : "bg-slate-100 text-slate-700"
-                    }`}>
-                    {estimateStatusLabel || `Статус #${estimate.status}`}
-                  </span>
-                </div>
+                <span className={`text-[11px] ${themeText.secondary(isDark)}`}>{formatDateTime(estimate.created_at)}</span>
 
                 <div className="flex items-center gap-2">
-                  <span className={`text-[11px] ${themeText.secondary(isDark)}`}>{formatDateTime(estimate.created_at)}</span>
+                  <button
+                    onClick={downloadEstimateReport}
+                    disabled={downloadingEstimateReport}
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-2 text-xs text-white hover:bg-emerald-600 disabled:opacity-60"
+                    aria-label="Скачать смету"
+                    >
+                      <Download size={14} />
+                      {downloadingEstimateReport ? "..." : "Excel"}
+                    </button>
                   {canEditEstimate && (
                     <button
                       onClick={openCreateModal}
@@ -781,13 +888,24 @@ export default function Estimates() {
                 </div>
               </div>
 
-              <div className="flex justify-between text-[12px]">
-                <span className={themeText.secondary(isDark)}>Позиций: {filteredItems.length}</span>
+              <div className="flex items-center justify-between gap-3 text-[12px]">
+                <div className="flex items-center gap-2">
+                  <span className={themeText.secondary(isDark)}>Позиций: {filteredItems.length}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${Number(estimate.status) === 2
+                    ? "bg-emerald-100 text-emerald-700"
+                    : isDark
+                      ? "bg-gray-800 text-gray-200"
+                      : "bg-slate-100 text-slate-700"
+                    }`}>
+                    {estimateStatusLabel || `Статус #${estimate.status}`}
+                  </span>
+                </div>
+
                 <span className="font-medium text-green-500">{totalSum.toLocaleString()}</span>
               </div>
             </div>
 
-            <div className={`mt-3 space-y-2 border-t pt-2 ${themeBorder.divider(isDark)}`}>
+              <div className={`mt-3 space-y-2 border-t pt-2 ${themeBorder.divider(isDark)}`}>
               {groupedSections.map((group) => (
                 <div
                   key={group.key}
@@ -977,9 +1095,8 @@ export default function Estimates() {
                 <span className={modalLabelClass}>{Number(itemForm.item_type) === 1 ? "Материал" : "Услуга"}</span>
                 <div
                   onClick={() => !itemForm.id && setShowItemPicker(true)}
-                  className={`${themeSurface.panelMuted(isDark)} cursor-pointer rounded border ${isDark ? "border-gray-700" : "border-slate-300"} px-3 py-2 text-sm ${
-                    itemForm.id ? "cursor-not-allowed opacity-60" : ""
-                  }`}
+                  className={`${themeSurface.panelMuted(isDark)} cursor-pointer rounded border ${isDark ? "border-gray-700" : "border-slate-300"} px-3 py-2 text-sm ${itemForm.id ? "cursor-not-allowed opacity-60" : ""
+                    }`}
                 >
                   {Number(itemForm.item_type) === 1 ? (
                     itemForm.material_id ? (
@@ -1180,4 +1297,3 @@ export default function Estimates() {
     </div>
   );
 }
-

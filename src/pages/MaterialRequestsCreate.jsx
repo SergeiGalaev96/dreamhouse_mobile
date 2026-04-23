@@ -88,6 +88,20 @@ export default function MaterialRequestsCreate() {
     ]).then(setDictionaries);
   }, []);
 
+  useEffect(() => {
+    const parentPath = `/projects/${projectId}/blocks/${blockId}/material-requests`;
+    if (typeof window === "undefined") return undefined;
+
+    window.history.pushState({ materialRequestCreateBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(parentPath, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate, projectId, blockId]);
+
   const loadMaterials = async () => {
     const res = await postRequest("/materialEstimateItems/search", {
       block_id: Number(blockId),

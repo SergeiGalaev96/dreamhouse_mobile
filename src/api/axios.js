@@ -18,11 +18,7 @@ const API_URL = import.meta.env.VITE_API_URL || (
     : EXTERNAL_API_URL
 );
 
-const API_FALLBACK_URLS = [
-  API_URL,
-  EXTERNAL_API_URL,
-  LOCAL_API_URL
-].filter((url, index, list) => url && list.indexOf(url) === index);
+const API_FALLBACK_URLS = [API_URL].filter(Boolean);
 
 const REPORTS_URL = import.meta.env.VITE_REPORTS_URL || (
   isDev
@@ -82,16 +78,12 @@ export const reportsURL = () => REPORTS_URL;
 export const reportsFallbackURLs = () => {
   const currentBaseURL = baseURL();
   const currentReportsURL = currentBaseURL
-    ? currentBaseURL
-      .replace(":3300/api", ":8080")
-      .replace(":4000/api", ":8080")
+    ? `${new URL(currentBaseURL).protocol}//${new URL(currentBaseURL).hostname}:8080`
     : "";
 
   return [
     currentReportsURL,
-    REPORTS_URL,
-    EXTERNAL_REPORTS_URL,
-    LOCAL_REPORTS_URL
+    REPORTS_URL
   ].filter((url, index, list) => url && list.indexOf(url) === index);
 };
 export const socketFallbackURLs = () => {

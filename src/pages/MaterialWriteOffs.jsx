@@ -1,16 +1,24 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Minus, Search, FileSignature, PackageMinus } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { postRequest } from "../api/request";
 import { loadDictionaries } from "../utils/dictionaryLoader";
-import { formatDate } from "../utils/date";
+import { formatDate, formatDateTime } from "../utils/date";
 import PullToRefresh from "../components/PullToRefresh";
 import { themeBorder, themeControl, themeSurface, themeText } from "../utils/themeStyles";
 import { useTheme } from "../context/ThemeContext";
 import { AuthContext } from "../auth/AuthContext";
 
 const PAGE_SIZE = 10;
+const EMPTY_PAGINATION = {
+  page: 1,
+  size: PAGE_SIZE,
+  total: 0,
+  pages: 1,
+  hasNext: false,
+  hasPrev: false,
+};
 
 const SIGN_STAGES = [
   { key: "foreman", label: "Прораб", field: "signed_by_foreman" },
@@ -41,18 +49,16 @@ const STATUS_STYLES = {
 const emptyAvrForm = {
   workPerformedId: "",
   workPerformedItemId: "",
-  writeOffDate: "",
   note: "",
 };
 
 const emptyMbpForm = {
-  blockId: "",
-  writeOffDate: "",
   note: "",
 };
 
 export default function MaterialWriteOffs() {
   const { projectId, warehouseId } = useParams();
+  const navigate = useNavigate();
   const { isDark } = useTheme();
   const { user } = useContext(AuthContext);
 
@@ -75,6 +81,9 @@ export default function MaterialWriteOffs() {
   const [workPerformedItems, setWorkPerformedItems] = useState([]);
   const [availableMaterials, setAvailableMaterials] = useState([]);
   const [materialQuantities, setMaterialQuantities] = useState({});
+  const [materialInputSearch, setMaterialInputSearch] = useState("");
+  const [materialSearch, setMaterialSearch] = useState("");
+  const loadRequestRef = useRef(0);
 
   const pageClass = `space-y-4 pb-24 ${themeText.page(isDark)}`;
   const inputClass = themeControl.input(isDark);
@@ -133,11 +142,6 @@ export default function MaterialWriteOffs() {
     [dictionaries.projectBlocks]
   );
 
-  const projectBlockOptions = useMemo(
-    () => (dictionaries.projectBlocks || []).filter((block) => Number(block.project_id) === Number(projectId)),
-    [dictionaries.projectBlocks, projectId]
-  );
-
   const currentRoleLabel = useMemo(
     () => (dictionaries.userRoles || []).find((item) => item.id === Number(user?.role_id))?.label?.toLowerCase() || "",
     [dictionaries.userRoles, user?.role_id]
@@ -168,7 +172,7 @@ export default function MaterialWriteOffs() {
     [dictionaries.materialWriteOffStatuses]
   );
 
-  const loadAvrWriteOffs = useCallback(async () => {
+  const loadAvrWriteOffs = useCallback(async (requestId) => {
     const res = await postRequest("/materialWriteOffs/search", {
       project_id: Number(projectId),
       warehouse_id: Number(warehouseId),
@@ -176,7 +180,12 @@ export default function MaterialWriteOffs() {
       size: PAGE_SIZE,
     });
 
-    if (!res.success) return;
+    if (!res.success) {
+      if (loadRequestRef.current !== requestId) return;
+      setItems([]);
+      setPagination(EMPTY_PAGINATION);
+      return;
+    }
 
     const query = search.trim().toLowerCase();
     const filtered = query
@@ -187,11 +196,12 @@ export default function MaterialWriteOffs() {
       })
       : res.data || [];
 
+    if (loadRequestRef.current !== requestId) return;
     setItems(filtered);
     setPagination(res.pagination);
   }, [getWorkItemLabel, page, projectId, search, warehouseId]);
 
-  const loadMbpWriteOffs = useCallback(async () => {
+  const loadMbpWriteOffs = useCallback(async (requestId) => {
     const res = await postRequest("/mbpWriteOffs/search", {
       project_id: Number(projectId),
       warehouse_id: Number(warehouseId),
@@ -199,7 +209,12 @@ export default function MaterialWriteOffs() {
       size: PAGE_SIZE,
     });
 
-    if (!res.success) return;
+    if (!res.success) {
+      if (loadRequestRef.current !== requestId) return;
+      setItems([]);
+      setPagination(EMPTY_PAGINATION);
+      return;
+    }
 
     const query = search.trim().toLowerCase();
     const filtered = query
@@ -213,28 +228,86 @@ export default function MaterialWriteOffs() {
       })
       : res.data || [];
 
+    if (loadRequestRef.current !== requestId) return;
+    setItems(filtered);
+    setPagination(res.pagination);
+  }, [page, projectId, search, warehouseId]);
+
+  const loadProcessingWriteOffs = useCallback(async (requestId) => {
+    const res = await postRequest("/materialProcessingWriteOffs/search", {
+      project_id: Number(projectId),
+      warehouse_id: Number(warehouseId),
+      page,
+      size: PAGE_SIZE,
+    });
+
+    if (!res.success) {
+      if (loadRequestRef.current !== requestId) return;
+      setItems([]);
+      setPagination(EMPTY_PAGINATION);
+      return;
+    }
+
+    const query = search.trim().toLowerCase();
+    const filtered = query
+      ? (res.data || []).filter((item) => {
+        const note = String(item.note || "").toLowerCase();
+        const materialNames = (item.items || [])
+          .map((detail) => detail.material?.name || "")
+          .join(" ")
+          .toLowerCase();
+        return note.includes(query) || materialNames.includes(query) || String(item.id).includes(query);
+      })
+      : res.data || [];
+
+    if (loadRequestRef.current !== requestId) return;
     setItems(filtered);
     setPagination(res.pagination);
   }, [page, projectId, search, warehouseId]);
 
   const loadItems = useCallback(async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setLoading(true);
     try {
       if (activeTab === "avr") {
-        await loadAvrWriteOffs();
+        await loadAvrWriteOffs(requestId);
+      } else if (activeTab === "processing") {
+        await loadProcessingWriteOffs(requestId);
       } else {
-        await loadMbpWriteOffs();
+        await loadMbpWriteOffs(requestId);
       }
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) {
+        setLoading(false);
+      }
     }
-  }, [activeTab, loadAvrWriteOffs, loadMbpWriteOffs]);
+  }, [activeTab, loadAvrWriteOffs, loadMbpWriteOffs, loadProcessingWriteOffs]);
 
   useEffect(() => {
     loadItems();
   }, [loadItems]);
 
   useEffect(() => {
+    const warehousePath = `/projects/${projectId}/warehouses/${warehouseId}/warehouse-stocks`;
+
+    if (typeof window === "undefined") return undefined;
+
+    window.history.pushState({ writeOffBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(warehousePath, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [navigate, projectId, warehouseId]);
+
+  useEffect(() => {
+    setItems([]);
+    setPagination(EMPTY_PAGINATION);
     setPage(1);
     setExpandedId(null);
   }, [activeTab]);
@@ -263,13 +336,14 @@ export default function MaterialWriteOffs() {
   const openCreateModal = async () => {
     setMaterialQuantities({});
     setAvailableMaterials([]);
+    setMaterialInputSearch("");
+    setMaterialSearch("");
     setWorkPerformedList([]);
     setWorkPerformedItems([]);
 
     if (activeTab === "avr") {
       setAvrForm({
         ...emptyAvrForm,
-        writeOffDate: new Date().toISOString().slice(0, 10),
       });
 
       const res = await postRequest("/workPerformed/search", {
@@ -284,8 +358,6 @@ export default function MaterialWriteOffs() {
     } else {
       setMbpForm({
         ...emptyMbpForm,
-        blockId: String(projectBlockOptions[0]?.id || ""),
-        writeOffDate: new Date().toISOString().slice(0, 10),
       });
     }
 
@@ -341,6 +413,30 @@ export default function MaterialWriteOffs() {
     [availableMaterials, materialQuantities]
   );
 
+  const filteredAvailableMaterials = useMemo(() => {
+    const query = materialSearch.trim().toLowerCase();
+    if (!query) return availableMaterials;
+
+    return availableMaterials.filter((stock) => {
+      const materialName = String(stock.material?.name || "").toLowerCase();
+      const unitName = String(getUnitLabel(stock.unit_of_measure) || "").toLowerCase();
+      return materialName.includes(query) || unitName.includes(query);
+    });
+  }, [availableMaterials, getUnitLabel, materialSearch]);
+
+  const handleMaterialSearch = () => {
+    setMaterialSearch(materialInputSearch);
+  };
+
+  const handleChangeTab = (tab) => {
+    loadRequestRef.current += 1;
+    setItems([]);
+    setPagination(EMPTY_PAGINATION);
+    setExpandedId(null);
+    setPage(1);
+    setActiveTab(tab);
+  };
+
   const handleCreateAvr = async () => {
     if (!avrForm.workPerformedId) return toast.error("Выберите АВР");
     if (!avrForm.workPerformedItemId) return toast.error("Выберите работу АВР");
@@ -351,7 +447,6 @@ export default function MaterialWriteOffs() {
       const res = await postRequest("/materialWriteOffs/create", {
         warehouse_id: Number(warehouseId),
         work_performed_item_id: Number(avrForm.workPerformedItemId),
-        write_off_date: avrForm.writeOffDate,
         note: avrForm.note,
         items: createPayloadItems,
       });
@@ -371,15 +466,12 @@ export default function MaterialWriteOffs() {
   };
 
   const handleCreateMbp = async () => {
-    if (!mbpForm.blockId) return toast.error("Выберите блок");
     if (!createPayloadItems.length) return toast.error("Укажите хотя бы один материал");
 
     setCreating(true);
     try {
       const res = await postRequest("/mbpWriteOffs/create", {
         warehouse_id: Number(warehouseId),
-        block_id: Number(mbpForm.blockId),
-        write_off_date: mbpForm.writeOffDate,
         note: mbpForm.note,
         items: createPayloadItems,
       });
@@ -398,8 +490,38 @@ export default function MaterialWriteOffs() {
     }
   };
 
+  const handleCreateProcessing = async () => {
+    if (!createPayloadItems.length) return toast.error("Укажите хотя бы один материал");
+
+    setCreating(true);
+    try {
+      const res = await postRequest("/materialProcessingWriteOffs/create", {
+        warehouse_id: Number(warehouseId),
+        note: mbpForm.note,
+        items: createPayloadItems,
+      });
+
+      if (!res.success) {
+        throw new Error(res.message || "Ошибка создания акта переработки");
+      }
+
+      toast.success("Акт переработки создан");
+      setShowCreate(false);
+      await loadItems();
+    } catch (error) {
+      toast.error(error.message || "Ошибка создания акта переработки");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const handleSign = async (item, stageKey) => {
-    const endpoint = activeTab === "avr" ? "/materialWriteOffs/sign/" : "/mbpWriteOffs/sign/";
+    const endpoint =
+      activeTab === "avr"
+        ? "/materialWriteOffs/sign/"
+        : activeTab === "processing"
+          ? "/materialProcessingWriteOffs/sign/"
+          : "/mbpWriteOffs/sign/";
     const res = await postRequest(`${endpoint}${item.id}`, { stage: stageKey });
 
     if (res.success) {
@@ -418,6 +540,17 @@ export default function MaterialWriteOffs() {
     >
       {getStatusLabel(status)}
     </span>
+  );
+
+  const renderStatusWithPostedAt = (item) => (
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      {renderStatus(item.status)}
+      {item.posted_at && (
+        <div className={`text-[10px] leading-none ${mutedTextClass}`}>
+          {formatDateTime(item.posted_at)}
+        </div>
+      )}
+    </div>
   );
 
   const renderSignDots = (item) => (
@@ -474,12 +607,11 @@ export default function MaterialWriteOffs() {
               {getWorkItemLabel(item.work_performed_item || {})}
             </div>
             <span className={`text-[11px] ${mutedTextClass}`}>
-              АВР: №{item.work_performed_id || item.work_performed?.id || "-"} | Объем: {item.work_performed_item?.quantity || "-"} |{" "}
-              {formatDate(item.write_off_date || item.created_at)}
+              АВР: №{item.work_performed_id || item.work_performed?.id || "-"} | Объем: {item.work_performed_item?.quantity || "-"}
             </span>
           </div>
 
-          {renderStatus(item.status)}
+          {renderStatusWithPostedAt(item)}
         </div>
 
         {renderSignDots(item)}
@@ -514,26 +646,22 @@ export default function MaterialWriteOffs() {
     const expanded = expandedId === item.id;
     const detailItems = item.items || [];
     const materialCount = detailItems.length;
+    const isProcessing = activeTab === "processing";
 
     return (
-      <div key={`mbp-${item.id}`} className={cardClass} onClick={() => handleToggleExpand(item.id)}>
+      <div key={`${isProcessing ? "processing" : "mbp"}-${item.id}`} className={cardClass} onClick={() => handleToggleExpand(item.id)}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            {!!item.block_id && (
-              <div className={`mb-0.5 text-[13px] font-semibold ${isDark ? "text-sky-300" : "text-blue-700"}`}>
-                {getBlockLabel(item.block_id) || item.block_id}
-              </div>
-            )}
             <div className={`break-words pr-2 text-[12px] font-medium leading-snug ${themeText.primary(isDark)}`}>
-              МБП списание №{item.id}
+              {isProcessing ? "Акт переработки" : "МБП списание"} №{item.id}
             </div>
             <span className={`text-[11px] ${mutedTextClass}`}>
-              Дата: {formatDate(item.write_off_date || item.created_at)} | Материалов: {materialCount}
+              Материалов: {materialCount}
             </span>
             {!!item.note && <div className={`mt-1 text-[11px] ${mutedTextClass}`}>{item.note}</div>}
           </div>
 
-          {renderStatus(item.status)}
+          {renderStatusWithPostedAt(item)}
         </div>
 
         {renderSignDots(item)}
@@ -573,19 +701,25 @@ export default function MaterialWriteOffs() {
         </h1>
       </div>
 
-      <div className={`${themeSurface.sticky(isDark)} sticky z-20 space-y-2 rounded-xl border p-2 ${themeBorder.soft(isDark)}`} style={{ top: "calc(env(safe-area-inset-top, 0px) + 56px)" }}>
-        <div className="grid grid-cols-2 gap-2">
+      <div className={`${themeSurface.sticky(isDark)} sticky z-20 space-y-2 rounded-xl p-2`} style={{ top: "calc(env(safe-area-inset-top, 0px) + 56px)" }}>
+        <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={() => setActiveTab("avr")}
+            onClick={() => handleChangeTab("avr")}
             className={activeTab === "avr" ? "rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white" : pagerButtonClass}
           >
             АВР
           </button>
           <button
-            onClick={() => setActiveTab("mbp")}
+            onClick={() => handleChangeTab("mbp")}
             className={activeTab === "mbp" ? "rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white" : pagerButtonClass}
           >
             МБП
+          </button>
+          <button
+            onClick={() => handleChangeTab("processing")}
+            className={activeTab === "processing" ? "rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white" : pagerButtonClass}
+          >
+            Переработка
           </button>
         </div>
 
@@ -596,7 +730,13 @@ export default function MaterialWriteOffs() {
               value={inputSearch}
               onChange={(e) => setInputSearch(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder={activeTab === "avr" ? "Поиск по АВР и работе..." : "Поиск по МБП и материалам..."}
+              placeholder={
+                activeTab === "avr"
+                  ? "Поиск по АВР и работе..."
+                  : activeTab === "processing"
+                    ? "Поиск по переработке и материалам..."
+                    : "Поиск по МБП и материалам..."
+              }
               className={inputClass}
             />
           </div>
@@ -613,7 +753,11 @@ export default function MaterialWriteOffs() {
         {!loading && items.length === 0 && (
           <div className={panelClass}>
             <div className={`text-sm ${mutedTextClass}`}>
-              {activeTab === "avr" ? "Акты списания не найдены." : "Списания МБП не найдены."}
+              {activeTab === "avr"
+                ? "Акты списания не найдены."
+                : activeTab === "processing"
+                  ? "Акты переработки не найдены."
+                  : "Списания МБП не найдены."}
             </div>
           </div>
         )}
@@ -643,7 +787,11 @@ export default function MaterialWriteOffs() {
               <div className="flex items-center gap-2">
                 <FileSignature size={18} className="text-red-400" />
                 <div className="text-base font-semibold">
-                  {activeTab === "avr" ? "Новый акт списания" : "Новое списание МБП"}
+                  {activeTab === "avr"
+                    ? "Новый акт списания"
+                    : activeTab === "processing"
+                      ? "Новый акт переработки"
+                      : "Новое списание МБП"}
                 </div>
               </div>
               <button onClick={() => setShowCreate(false)} className={pagerButtonClass}>
@@ -693,38 +841,6 @@ export default function MaterialWriteOffs() {
                 </>
               )}
 
-              {activeTab === "mbp" && (
-                <div>
-                  <div className={`mb-1 text-xs ${mutedTextClass}`}>Блок</div>
-                  <select
-                    value={mbpForm.blockId}
-                    onChange={(e) => setMbpForm((prev) => ({ ...prev, blockId: e.target.value }))}
-                    className={modalInputClass}
-                  >
-                    <option value="">Выберите блок</option>
-                    {projectBlockOptions.map((block) => (
-                      <option key={block.id} value={block.id}>
-                        {block.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <div className={`mb-1 text-xs ${mutedTextClass}`}>Дата</div>
-                <input
-                  type="date"
-                  value={activeTab === "avr" ? avrForm.writeOffDate : mbpForm.writeOffDate}
-                  onChange={(e) =>
-                    activeTab === "avr"
-                      ? setAvrForm((prev) => ({ ...prev, writeOffDate: e.target.value }))
-                      : setMbpForm((prev) => ({ ...prev, writeOffDate: e.target.value }))
-                  }
-                  className={modalInputClass}
-                />
-              </div>
-
               <div>
                 <div className={`mb-1 text-xs ${mutedTextClass}`}>Комментарий</div>
                 <textarea
@@ -741,7 +857,34 @@ export default function MaterialWriteOffs() {
 
               <div className="space-y-2">
                 <div className="text-sm font-semibold">Материалы склада</div>
-                {availableMaterials.map((stock) => (
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search size={16} className={`absolute left-3 top-3 ${mutedTextClass}`} />
+                    <input
+                      value={materialInputSearch}
+                      onChange={(e) => setMaterialInputSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleMaterialSearch();
+                      }}
+                      placeholder="Поиск материалов..."
+                      className={`${modalInputClass} pl-9`}
+                    />
+                  </div>
+                  <button
+                    onClick={handleMaterialSearch}
+                    className="rounded-lg bg-blue-600 px-4 text-sm text-white hover:bg-blue-500"
+                  >
+                    Go
+                  </button>
+                </div>
+
+                {filteredAvailableMaterials.length === 0 && (
+                  <div className={`rounded-lg px-3 py-4 text-center text-sm ${themeSurface.panelMuted(isDark)} ${mutedTextClass}`}>
+                    Материалы не найдены
+                  </div>
+                )}
+
+                {filteredAvailableMaterials.map((stock) => (
                   <div key={stock.id} className={`${themeSurface.panelMuted(isDark)} rounded px-3 py-2`}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -771,7 +914,13 @@ export default function MaterialWriteOffs() {
               </div>
 
               <button
-                onClick={activeTab === "avr" ? handleCreateAvr : handleCreateMbp}
+                onClick={
+                  activeTab === "avr"
+                    ? handleCreateAvr
+                    : activeTab === "processing"
+                      ? handleCreateProcessing
+                      : handleCreateMbp
+                }
                 disabled={creating}
                 className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
               >
@@ -779,7 +928,9 @@ export default function MaterialWriteOffs() {
                   ? "Сохранение..."
                   : activeTab === "avr"
                     ? "Создать акт списания"
-                    : "Создать списание МБП"}
+                    : activeTab === "processing"
+                      ? "Создать акт переработки"
+                      : "Создать списание МБП"}
               </button>
             </div>
           </div>

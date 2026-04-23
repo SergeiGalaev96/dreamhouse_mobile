@@ -229,28 +229,11 @@ export default function WorkPerformed() {
       return;
     }
 
-    if (!docs.data?.length) {
-      const createDocPayload = {
-        entity_type: "workPerformed",
-        entity_id: actId,
-        name: "Файлы Акта №" + actId,
-        status: 3
-      };
-
-      const createDoc = await postRequest(`/documents/create`, createDocPayload);
-
-      if (!createDoc.success) {
-        toast.error("Ошибка создания папки файлов");
-        return;
-      }
-
-      docId = createDoc.data.id;
-    } else {
-      docId = docs.data[0].id;
-    }
+    docId = docs.data?.[0]?.id;
 
     if (!docId) {
-      console.error("docId undefined");
+      setActDocId(null);
+      setActFiles([]);
       return;
     }
 

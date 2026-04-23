@@ -7,6 +7,7 @@ import { toast } from "react-hot-toast";
 import { SocketContext } from "../context/socket-context";
 import { useTheme } from "../context/ThemeContext";
 import { themeText } from "../utils/themeStyles";
+import PullToRefresh from "../components/PullToRefresh";
 
 export default function Notifications() {
   const { socket } = useContext(SocketContext);
@@ -175,6 +176,7 @@ export default function Notifications() {
 
   return (
     <div className={pageClass}>
+      <PullToRefresh onRefresh={() => loadNotifications(1, true)} disabled={loading}>
       <div className="mb-4 flex items-center justify-between">
         <h2 className={headingClass}>Уведомления</h2>
 
@@ -230,6 +232,7 @@ export default function Notifications() {
         {loading && "Загрузка..."}
         {!hasMore && "Больше нет"}
       </div>
+      </PullToRefresh>
     </div>
   );
 }

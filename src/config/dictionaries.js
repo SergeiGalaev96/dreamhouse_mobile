@@ -124,6 +124,20 @@ export const DictionaryConfig = {
       label: item.name
     })
   },
+  materialMovementStatuses: {
+    url: "/materialMovementStatuses/gets",
+    map: (item) => ({
+      id: item.id,
+      label: item.name
+    })
+  },
+  warehouseTransferStatuses: {
+    url: "/warehouseTransferStatuses/gets",
+    map: (item) => ({
+      id: item.id,
+      label: item.name
+    })
+  },
 
   purchaseOrderStatuses: {
     url: "/purchaseOrderStatuses/gets",
@@ -144,7 +158,8 @@ export const DictionaryConfig = {
     url: "/warehouses/gets",
     map: (item) => ({
       id: item.id,
-      label: item.name
+      label: item.name,
+      project_id: item.project_id
     })
   },
 

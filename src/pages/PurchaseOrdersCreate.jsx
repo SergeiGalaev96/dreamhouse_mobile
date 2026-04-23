@@ -71,6 +71,20 @@ export default function PurchaseOrdersCreate() {
     loadRates();
   }, []);
 
+  useEffect(() => {
+    const parentPath = `/projects/${projectId}/blocks/${blockId}/purchase-orders`;
+    if (typeof window === "undefined") return undefined;
+
+    window.history.pushState({ purchaseOrdersCreateBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(parentPath, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate, projectId, blockId]);
+
   const loadRequestItems = async () => {
     const payload = {
       project_id: Number(projectId),

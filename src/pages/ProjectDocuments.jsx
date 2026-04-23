@@ -1,6 +1,6 @@
 ﻿import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import Select from "react-select";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Briefcase,
   Calendar,
@@ -30,6 +30,7 @@ import { loadDictionaries } from "../utils/dictionaryLoader";
 import { formatDate, formatDateTime } from "../utils/date";
 import { getAuthToken } from "../utils/authStorage";
 import { themeBorder, themeControl, themeSurface, themeText } from "../utils/themeStyles";
+import PullToRefresh from "../components/PullToRefresh";
 
 const emptyDocumentForm = {
   name: "",
@@ -95,6 +96,7 @@ const getSelectStyles = (isDark) => ({
 
 export default function ProjectDocuments() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const { isDark } = useTheme();
 
@@ -252,6 +254,28 @@ export default function ProjectDocuments() {
     if (!expandedStageId || loadedStages[expandedStageId]) return;
     loadDocuments(expandedStageId, searchByStage[expandedStageId] || "");
   }, [expandedStageId, loadedStages, searchByStage]);
+
+  useEffect(() => {
+    const parentPath = `/projects/${projectId}`;
+    if (typeof window === "undefined") return undefined;
+
+    window.history.pushState({ projectDocumentsBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(parentPath, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate, projectId]);
+
+  const handleRefresh = async () => {
+    await Promise.all([loadDicts(), loadStages()]);
+
+    if (expandedStageId) {
+      await loadDocuments(expandedStageId, searchByStage[expandedStageId] || "");
+    }
+  };
 
   const loadFiles = async (documentId) => {
     try {
@@ -748,6 +772,7 @@ export default function ProjectDocuments() {
 
   return (
     <div className={pageClass}>
+      <PullToRefresh onRefresh={handleRefresh} disabled={loading || loadingStages}>
       <div className="flex items-center gap-2">
         <Briefcase size={20} className="text-blue-400" />
         <h1 className="text-lg font-semibold">Юр. отдел: {projectName}</h1>
@@ -856,6 +881,7 @@ export default function ProjectDocuments() {
           </div>
         )}
       </div>
+      </PullToRefresh>
 
       {previewIndex !== null && previewFiles.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95" onClick={closePreview} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -950,7 +976,10 @@ export default function ProjectDocuments() {
         onClose={() => setHistoryOpen(false)}
         entity={historyEntity}
         entityId={historyId}
-        fieldsMap={{ name: "Название", price: "Цена", deadline: "Дедлайн", status: "Статус", description: "Описание", location: "Место" }}
+        valueMaps={{
+          status: Object.fromEntries((dictionaries.documentStatuses || []).map((item) => [item.id, item.label])),
+          responsible_users: Object.fromEntries((dictionaries.users || []).map((item) => [item.id, item.label]))
+        }}
       />
     </div>
   );

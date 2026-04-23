@@ -6,19 +6,45 @@ import { loadDictionaries } from "../utils/dictionaryLoader";
 import { useTheme } from "../context/ThemeContext";
 import { AuthContext } from "../auth/AuthContext";
 import { themeBorder, themeControl, themeMisc, themeSurface, themeText } from "../utils/themeStyles";
+import PullToRefresh from "../components/PullToRefresh";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 const STRUCTURE_EDITOR_ROLE_IDS = [1, 10, 11];
+const PROJECT_MANAGER_ROLE_IDS = [1, 10];
 
 const emptyStageForm = {
   id: null,
-  name: ""
+  name: "",
+  start_date: "",
+  end_date: ""
 };
 
 const emptySubsectionForm = {
   id: null,
   name: ""
+};
+
+const emptyProjectForm = {
+  name: "",
+  address: "",
+  customer_name: "",
+  start_date: "",
+  end_date: "",
+  planned_budget: "",
+  manager_id: "",
+  foreman_id: "",
+  master_id: "",
+  warehouse_manager_id: "",
+  description: ""
+};
+
+const emptyBlockForm = {
+  id: null,
+  name: "",
+  planned_budget: "",
+  total_area: "",
+  sale_area: ""
 };
 
 export default function ProjectCard() {
@@ -39,12 +65,19 @@ export default function ProjectCard() {
   const [subsectionModalOpen, setSubsectionModalOpen] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
   const [savingSubsection, setSavingSubsection] = useState(false);
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [savingProject, setSavingProject] = useState(false);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [savingBlock, setSavingBlock] = useState(false);
   const [stageForm, setStageForm] = useState(emptyStageForm);
   const [subsectionForm, setSubsectionForm] = useState(emptySubsectionForm);
+  const [projectForm, setProjectForm] = useState(emptyProjectForm);
+  const [blockForm, setBlockForm] = useState(emptyBlockForm);
   const [stageModalBlockId, setStageModalBlockId] = useState(null);
   const [subsectionModalStageId, setSubsectionModalStageId] = useState(null);
 
   const canManageStructure = STRUCTURE_EDITOR_ROLE_IDS.includes(Number(user?.role_id));
+  const canManageProject = PROJECT_MANAGER_ROLE_IDS.includes(Number(user?.role_id));
 
   const loadProject = async () => {
     const res = await getRequest(`/projects/getById/${projectId}`);
@@ -127,11 +160,207 @@ export default function ProjectCard() {
     toast.error("Склад для проекта не найден");
   };
 
+  const openEditProject = () => {
+    setProjectForm({
+      name: project?.name || "",
+      address: project?.address || "",
+      customer_name: project?.customer_name || "",
+      start_date: project?.start_date ? String(project.start_date).slice(0, 10) : "",
+      end_date: project?.end_date ? String(project.end_date).slice(0, 10) : "",
+      planned_budget: project?.planned_budget ?? "",
+      manager_id: project?.manager_id ?? "",
+      foreman_id: project?.foreman_id ?? "",
+      master_id: project?.master_id ?? "",
+      warehouse_manager_id: project?.warehouse_manager_id ?? "",
+      description: project?.description || ""
+    });
+    setProjectModalOpen(true);
+  };
+
+  const closeProjectModal = () => {
+    setProjectForm(emptyProjectForm);
+    setProjectModalOpen(false);
+  };
+
+  const handleProjectFormChange = (field, value) => {
+    setProjectForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const normalizeNullableNumber = (value) => {
+    if (value === "" || value === null || value === undefined) return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const saveProject = async (e) => {
+    e.preventDefault();
+
+    if (!projectForm.name.trim()) {
+      toast.error("Введите название объекта");
+      return;
+    }
+
+    try {
+      setSavingProject(true);
+      const res = await putRequest(`/projects/update/${projectId}`, {
+        name: projectForm.name.trim(),
+        address: projectForm.address.trim() || null,
+        customer_name: projectForm.customer_name.trim() || null,
+        start_date: projectForm.start_date || null,
+        end_date: projectForm.end_date || null,
+        planned_budget: normalizeNullableNumber(projectForm.planned_budget) || 0,
+        manager_id: normalizeNullableNumber(projectForm.manager_id),
+        foreman_id: normalizeNullableNumber(projectForm.foreman_id),
+        master_id: normalizeNullableNumber(projectForm.master_id),
+        warehouse_manager_id: normalizeNullableNumber(projectForm.warehouse_manager_id),
+        description: projectForm.description.trim() || null
+      });
+
+      if (!res?.success) {
+        toast.error(res?.message || "Не удалось сохранить объект");
+        return;
+      }
+
+      toast.success("Объект обновлен");
+      closeProjectModal();
+      await loadProject();
+    } catch (error) {
+      console.error("Project save error", error);
+      toast.error(error?.response?.data?.message || "Ошибка сохранения объекта");
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const deleteProjectItem = async () => {
+    if (!window.confirm(`Удалить объект "${project?.name}"?`)) return;
+
+    try {
+      const res = await deleteRequest(`/projects/delete/${projectId}`);
+      if (!res?.success) {
+        toast.error(res?.message || "Не удалось удалить объект");
+        return;
+      }
+
+      toast.success("Объект удален");
+      navigate("/projects");
+    } catch (error) {
+      console.error("Project delete error", error);
+      toast.error(error?.response?.data?.message || "Ошибка удаления объекта");
+    }
+  };
+
+  const openCreateBlock = () => {
+    setBlockForm(emptyBlockForm);
+    setBlockModalOpen(true);
+  };
+
+  const openEditBlock = (block) => {
+    setBlockForm({
+      id: block.id,
+      name: block.name || "",
+      planned_budget: block.planned_budget ?? "",
+      total_area: block.total_area ?? "",
+      sale_area: block.sale_area ?? ""
+    });
+    setBlockModalOpen(true);
+  };
+
+  const closeBlockModal = () => {
+    setBlockForm(emptyBlockForm);
+    setBlockModalOpen(false);
+  };
+
+  const handleBlockFormChange = (field, value) => {
+    setBlockForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const saveBlock = async (e) => {
+    e.preventDefault();
+
+    if (!blockForm.name.trim()) {
+      toast.error("Введите название блока");
+      return;
+    }
+
+    try {
+      setSavingBlock(true);
+      const payload = {
+        name: blockForm.name.trim(),
+        project_id: Number(projectId),
+        planned_budget: normalizeNullableNumber(blockForm.planned_budget) || 0,
+        total_area: normalizeNullableNumber(blockForm.total_area) || 0,
+        sale_area: normalizeNullableNumber(blockForm.sale_area) || 0
+      };
+
+      const res = blockForm.id
+        ? await putRequest(`/projectBlocks/update/${blockForm.id}`, payload)
+        : await postRequest("/projectBlocks/create", payload);
+
+      if (!res?.success) {
+        toast.error(res?.message || "Не удалось сохранить блок");
+        return;
+      }
+
+      toast.success(blockForm.id ? "Блок обновлен" : "Блок создан");
+      closeBlockModal();
+      await loadBlocks();
+    } catch (error) {
+      console.error("Block save error", error);
+      toast.error(error?.response?.data?.message || "Ошибка сохранения блока");
+    } finally {
+      setSavingBlock(false);
+    }
+  };
+
+  const deleteBlockItem = async (block) => {
+    if (!window.confirm(`Удалить блок "${block.name}"?`)) return;
+
+    try {
+      const res = await deleteRequest(`/projectBlocks/delete/${block.id}`);
+      if (!res?.success) {
+        toast.error(res?.message || "Не удалось удалить блок");
+        return;
+      }
+
+      toast.success("Блок удален");
+      if (expandedBlockId === block.id) {
+        setExpandedBlockId(null);
+      }
+      await loadBlocks();
+    } catch (error) {
+      console.error("Block delete error", error);
+      toast.error(error?.response?.data?.message || "Ошибка удаления блока");
+    }
+  };
+
   useEffect(() => {
     loadProject();
     loadBlocks();
     loadDicts();
   }, [projectId]);
+
+  useEffect(() => {
+    const parentPath = "/projects";
+    if (typeof window === "undefined") return undefined;
+
+    window.history.pushState({ projectCardBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(parentPath, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate]);
+
+  const handleRefresh = async () => {
+    await Promise.all([loadProject(), loadBlocks(), loadDicts()]);
+
+    if (expandedBlockId) {
+      await loadBlockStructure(expandedBlockId);
+    }
+  };
 
   const cardClass = themeSurface.card(isDark);
   const titleClass = themeText.title(isDark);
@@ -178,6 +407,11 @@ export default function ProjectCard() {
   };
 
   const formatMoney = (value) => (!value ? "0" : Number(value).toLocaleString("ru-RU"));
+  const formatPercent = (value) => {
+    const num = Number(value || 0);
+    if (!Number.isFinite(num)) return "0";
+    return Number.isInteger(num) ? String(num) : num.toFixed(2).replace(/\.?0+$/, "");
+  };
   const getBudgetPercentRaw = (item) => (!item.planned_budget || !item.actual_budget ? 0 : (item.actual_budget / item.planned_budget) * 100);
   const getBudgetPercentUI = (item) => Math.min(getBudgetPercentRaw(item), 100);
   const getBudgetColor = (item) => {
@@ -198,7 +432,12 @@ export default function ProjectCard() {
   };
 
   const openEditStage = (blockId, stage) => {
-    setStageForm({ id: stage.id, name: stage.name || "" });
+    setStageForm({
+      id: stage.id,
+      name: stage.name || "",
+      start_date: stage?.start_date ? String(stage.start_date).slice(0, 10) : "",
+      end_date: stage?.end_date ? String(stage.end_date).slice(0, 10) : ""
+    });
     setStageModalBlockId(blockId);
     setStageModalOpen(true);
   };
@@ -239,7 +478,12 @@ export default function ProjectCard() {
 
     try {
       setSavingStage(true);
-      const payload = { name: stageForm.name.trim(), block_id: Number(stageModalBlockId) };
+      const payload = {
+        name: stageForm.name.trim(),
+        block_id: Number(stageModalBlockId),
+        start_date: stageForm.start_date || null,
+        end_date: stageForm.end_date || null
+      };
       const res = stageForm.id
         ? await putRequest(`/blockStages/update/${stageForm.id}`, payload)
         : await postRequest("/blockStages/create", payload);
@@ -334,10 +578,23 @@ export default function ProjectCard() {
 
   return (
     <div className={isDark ? "space-y-4 text-white" : "space-y-4 text-black"}>
+      <PullToRefresh onRefresh={handleRefresh}>
       <div className={`${cardClass} space-y-3 p-4`}>
         <div className="flex items-center justify-between gap-3">
-          <h1 className={`select-none truncate text-base font-semibold ${titleClass}`}>{project.name}</h1>
-          <div className={`select-none rounded px-2 py-[3px] text-xs ${projectStatus.color}`}>{projectStatus.label}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className={`select-none truncate text-base font-semibold ${titleClass}`}>{project.name}</h1>
+            <div className={`select-none rounded px-2 py-[3px] text-xs ${projectStatus.color}`}>{projectStatus.label}</div>
+          </div>
+          {canManageProject && (
+            <div className="flex shrink-0 items-center gap-2">
+              <button onClick={deleteProjectItem} className="rounded bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30">
+                <Trash2 size={14} />
+              </button>
+              <button onClick={openEditProject} className={themeControl.actionTilePadded(isDark)}>
+                <Pencil size={14} />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className={`flex flex-wrap justify-between gap-x-2 text-sm select-none ${subTextClass}`}>
@@ -363,7 +620,7 @@ export default function ProjectCard() {
           <div>
             <div className={`mb-1 flex justify-between text-xs select-none ${subTextClass}`}>
               <span>Прогресс</span>
-              <span className={titleClass}>{project.progress_percent || 0}%</span>
+              <span className={titleClass}>{formatPercent(project.progress_percent)}%</span>
             </div>
             <div className={`h-2 w-full rounded ${trackClass} select-none`}>
               <div className={`${getProgressColor(project.progress_percent)} h-full`} style={{ width: `${project.progress_percent || 0}%` }} />
@@ -402,14 +659,48 @@ export default function ProjectCard() {
       </div>
 
       <div className="space-y-3">
+        {canManageProject && (
+          <div className="flex justify-end">
+            <button
+              onClick={openCreateBlock}
+              className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
+            >
+              <Plus size={14} />
+              Блок
+            </button>
+          </div>
+        )}
+
         {blocks.map((block) => {
           const expanded = expandedBlockId === block.id;
           const stages = blockStages[block.id] || [];
 
           return (
-            <div key={block.id} className={`${cardClass} space-y-3 p-4`}>
-              <div onClick={() => toggleBlock(block.id)} className="flex cursor-pointer items-center justify-between">
+            <div key={block.id} className={`${cardClass} space-y-3 p-3`}>
+              <div onClick={() => toggleBlock(block.id)} className="flex cursor-pointer items-center justify-between gap-3">
                 <span className={`text-sm font-semibold ${titleClass}`}>{block.name}</span>
+                {canManageProject && (
+                  <div className="ml-auto mr-3 flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteBlockItem(block);
+                      }}
+                      className="rounded bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditBlock(block);
+                      }}
+                      className={themeControl.actionTilePadded(isDark)}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
+                )}
                 <span className="text-xs text-blue-500">Этапы {expanded ? "▲" : "▼"}</span>
               </div>
 
@@ -431,7 +722,7 @@ export default function ProjectCard() {
                 <div>
                   <div className={`mb-1 flex justify-between text-xs ${subTextClass}`}>
                     <span>Прогресс</span>
-                    <span className={titleClass}>{block.progress_percent || 0}%</span>
+                    <span className={titleClass}>{formatPercent(block.progress_percent)}%</span>
                   </div>
                   <div className={`h-2 w-full rounded ${trackClass}`}>
                     <div className={`${getProgressColor(block.progress_percent)} h-full`} style={{ width: `${block.progress_percent || 0}%` }} />
@@ -452,8 +743,8 @@ export default function ProjectCard() {
                     <div><div className={`text-xs ${mutedTextClass}`}>Остаток</div><div className="text-yellow-500">{block.remaining_volume}</div></div>
                   </div>
 
-                  <div className={`rounded-xl border px-1 py-2.5 ${dividerClass}`}>
-                    <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className={`rounded-xl border px-1 py-2 ${dividerClass}`}>
+                    <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
                         <div className={`text-sm font-semibold ${titleClass}`}>Этапы и подэтапы</div>
                         <div className={`text-xs ${subTextClass}`}>Структура блока</div>
@@ -498,8 +789,12 @@ export default function ProjectCard() {
                                   <button onClick={() => deleteStageItem(block.id, stage)} className="rounded-lg bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30">
                                     <Trash2 size={14} />
                                   </button>
-                                  <button onClick={() => openCreateSubsection(stage.id)} className={themeControl.actionTilePadded(isDark)}>
+                                  <button
+                                    onClick={() => openCreateSubsection(stage.id)}
+                                    className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
+                                  >
                                     <Plus size={14} />
+                                    Подэтап
                                   </button>
                                   <button onClick={() => openEditStage(block.id, stage)} className={themeControl.actionTilePadded(isDark)}>
                                     <Pencil size={14} />
@@ -550,6 +845,7 @@ export default function ProjectCard() {
           );
         })}
       </div>
+      </PullToRefresh>
 
       {stageModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -571,6 +867,27 @@ export default function ProjectCard() {
                 placeholder="Название этапа"
                 className={modalInputClass}
               />
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className={`mb-1 text-xs ${subTextClass}`}>Дата начала</div>
+                  <input
+                    type="date"
+                    value={stageForm.start_date}
+                    onChange={(e) => setStageForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                    className={modalInputClass}
+                  />
+                </div>
+                <div>
+                  <div className={`mb-1 text-xs ${subTextClass}`}>Дата окончания</div>
+                  <input
+                    type="date"
+                    value={stageForm.end_date}
+                    onChange={(e) => setStageForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                    className={modalInputClass}
+                  />
+                </div>
+              </div>
 
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={closeStageModal} className={subtleButtonClass}>Отмена</button>
@@ -608,6 +925,186 @@ export default function ProjectCard() {
                 <button type="button" onClick={closeSubsectionModal} className={subtleButtonClass}>Отмена</button>
                 <button type="submit" disabled={savingSubsection} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50">
                   {savingSubsection ? "Сохранение..." : subsectionForm.id ? "Сохранить" : "Создать"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {blockModalOpen && canManageProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className={`${themeSurface.panel(isDark)} w-full max-w-md p-4`}>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <div className={`text-lg font-semibold ${titleClass}`}>{blockForm.id ? "Редактировать блок" : "Новый блок"}</div>
+                <div className={`text-xs ${subTextClass}`}>Управление блоком</div>
+              </div>
+              <button onClick={closeBlockModal} className={`${subTextClass} ${isDark ? "hover:text-white" : "hover:text-black"}`}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={saveBlock} className="space-y-3">
+              <div>
+                <div className={`mb-1 text-xs ${subTextClass}`}>Название</div>
+                <input
+                  value={blockForm.name}
+                  onChange={(e) => handleBlockFormChange("name", e.target.value)}
+                  placeholder="Название блока"
+                  className={modalInputClass}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div>
+                  <div className={`mb-1 text-xs ${subTextClass}`}>Бюджет</div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={blockForm.planned_budget}
+                    onChange={(e) => handleBlockFormChange("planned_budget", e.target.value)}
+                    placeholder="Плановый бюджет"
+                    className={modalInputClass}
+                  />
+                </div>
+                <div>
+                  <div className={`mb-1 text-xs ${subTextClass}`}>Общая площадь</div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={blockForm.total_area}
+                    onChange={(e) => handleBlockFormChange("total_area", e.target.value)}
+                    placeholder="Общая площадь"
+                    className={modalInputClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className={`mb-1 text-xs ${subTextClass}`}>Площадь продажи</div>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={blockForm.sale_area}
+                  onChange={(e) => handleBlockFormChange("sale_area", e.target.value)}
+                  placeholder="Площадь продажи"
+                  className={modalInputClass}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={closeBlockModal} className={subtleButtonClass}>Отмена</button>
+                <button type="submit" disabled={savingBlock} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50">
+                  {savingBlock ? "Сохранение..." : blockForm.id ? "Сохранить" : "Создать"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {projectModalOpen && canManageProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className={`${themeSurface.panel(isDark)} flex max-h-[88vh] w-full max-w-xl flex-col p-3`}>
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <div className={`text-lg font-semibold ${titleClass}`}>Редактировать объект</div>
+                <div className={`text-xs ${subTextClass}`}>Управление объектом</div>
+              </div>
+              <button onClick={closeProjectModal} className={`${subTextClass} ${isDark ? "hover:text-white" : "hover:text-black"}`}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={saveProject} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Название</div>
+                    <input value={projectForm.name} onChange={(e) => handleProjectFormChange("name", e.target.value)} className={modalInputClass} placeholder="Название объекта" />
+                  </div>
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Заказчик</div>
+                    <input value={projectForm.customer_name} onChange={(e) => handleProjectFormChange("customer_name", e.target.value)} className={modalInputClass} placeholder="Заказчик" />
+                  </div>
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Бюджет</div>
+                    <input type="number" min="0" step="0.01" value={projectForm.planned_budget} onChange={(e) => handleProjectFormChange("planned_budget", e.target.value)} className={modalInputClass} placeholder="Плановый бюджет" />
+                  </div>
+                </div>
+
+                <div>
+                  <div className={`mb-1 text-xs ${subTextClass}`}>Адрес</div>
+                  <input value={projectForm.address} onChange={(e) => handleProjectFormChange("address", e.target.value)} className={modalInputClass} placeholder="Адрес" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Дата начала</div>
+                    <input type="date" value={projectForm.start_date} onChange={(e) => handleProjectFormChange("start_date", e.target.value)} className={modalInputClass} />
+                  </div>
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Дата окончания</div>
+                    <input type="date" value={projectForm.end_date} onChange={(e) => handleProjectFormChange("end_date", e.target.value)} className={modalInputClass} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Менеджер</div>
+                    <select value={projectForm.manager_id} onChange={(e) => handleProjectFormChange("manager_id", e.target.value)} className={modalInputClass}>
+                      <option value="">Не выбран</option>
+                      {(dictionaries.users || []).map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Прораб</div>
+                    <select value={projectForm.foreman_id} onChange={(e) => handleProjectFormChange("foreman_id", e.target.value)} className={modalInputClass}>
+                      <option value="">Не выбран</option>
+                      {(dictionaries.users || []).map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Мастер</div>
+                    <select value={projectForm.master_id} onChange={(e) => handleProjectFormChange("master_id", e.target.value)} className={modalInputClass}>
+                      <option value="">Не выбран</option>
+                      {(dictionaries.users || []).map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Кладовщик</div>
+                    <select value={projectForm.warehouse_manager_id} onChange={(e) => handleProjectFormChange("warehouse_manager_id", e.target.value)} className={modalInputClass}>
+                      <option value="">Не выбран</option>
+                      {(dictionaries.users || []).map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <div className={`mb-1 text-xs ${subTextClass}`}>Комментарий</div>
+                  <textarea value={projectForm.description} onChange={(e) => handleProjectFormChange("description", e.target.value)} className={`${modalInputClass} min-h-[72px] resize-none`} placeholder="Комментарий" />
+                </div>
+              </div>
+
+              <div className="flex gap-2 border-t pt-2">
+                <button type="button" onClick={closeProjectModal} className={subtleButtonClass}>Отмена</button>
+                <button type="submit" disabled={savingProject} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50">
+                  {savingProject ? "Сохранение..." : "Сохранить"}
                 </button>
               </div>
             </form>

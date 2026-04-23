@@ -18,6 +18,8 @@ const ProjectReports = lazy(() => import("../pages/ProjectReports"));
 const Users = lazy(() => import("../pages/Users"));
 const Suppliers = lazy(() => import("../pages/Suppliers"));
 const Contractors = lazy(() => import("../pages/Contractors"));
+const Materials = lazy(() => import("../pages/Materials"));
+const Services = lazy(() => import("../pages/Services"));
 const Tasks = lazy(() => import("../pages/Tasks"));
 const Notifications = lazy(() => import("../pages/Notifications"));
 const MaterialRequests = lazy(() => import("../pages/MaterialRequests"));
@@ -27,6 +29,7 @@ const WorkPerformed = lazy(() => import("../pages/WorkPerformed"));
 const WorkPerformedCreate = lazy(() => import("../pages/WorkPerformedCreate"));
 const WarehouseStocks = lazy(() => import("../pages/WarehouseStocks"));
 const WarehouseReceive = lazy(() => import("../pages/WarehouseReceive"));
+const WarehouseTransfer = lazy(() => import("../pages/WarehouseTransfer"));
 const MaterialWriteOffs = lazy(() => import("../pages/MaterialWriteOffs"));
 const PurchaseOrders = lazy(() => import("../pages/PurchaseOrders"));
 const PurchaseOrdersCreate = lazy(() => import("../pages/PurchaseOrdersCreate"));
@@ -34,6 +37,7 @@ const SupplierPurchaseOrders = lazy(() => import("../pages/SupplierPurchaseOrder
 
 const ADMIN_ROLE_ID = 1;
 const SUPPLIER_MANAGER_ROLE_IDS = [ADMIN_ROLE_ID, 10, 11];
+const MATERIAL_MANAGER_ROLE_IDS = [1, 10, 11, 4];
 
 function RouteLoader() {
   return (
@@ -76,6 +80,59 @@ function MobileBackHandler({ user }) {
       listener = await CapacitorApp.addListener("backButton", () => {
         const isRootPath = rootPaths.includes(location.pathname);
         const history = historyRef.current;
+        const writeOffMatch = location.pathname.match(/^\/projects\/(\d+)\/warehouses\/(\d+)\/write-offs$/);
+
+        if (writeOffMatch) {
+          navigate(`/projects/${writeOffMatch[1]}/warehouses/${writeOffMatch[2]}/warehouse-stocks`);
+          return;
+        }
+
+        const warehouseReceiveMatch = location.pathname.match(/^\/projects\/(\d+)\/warehouses\/(\d+)\/receive$/);
+        if (warehouseReceiveMatch) {
+          navigate(`/projects/${warehouseReceiveMatch[1]}/warehouses/${warehouseReceiveMatch[2]}/warehouse-stocks`);
+          return;
+        }
+
+        const warehouseTransferMatch = location.pathname.match(/^\/projects\/(\d+)\/warehouses\/(\d+)\/transfer$/);
+        if (warehouseTransferMatch) {
+          navigate(`/projects/${warehouseTransferMatch[1]}/warehouses/${warehouseTransferMatch[2]}/warehouse-stocks`);
+          return;
+        }
+
+        const projectDocumentsMatch = location.pathname.match(/^\/projects\/(\d+)\/documents$/);
+        if (projectDocumentsMatch) {
+          navigate(`/projects/${projectDocumentsMatch[1]}`);
+          return;
+        }
+
+        const projectReportsMatch = location.pathname.match(/^\/projects\/(\d+)\/reports$/);
+        if (projectReportsMatch) {
+          navigate(`/projects/${projectReportsMatch[1]}`);
+          return;
+        }
+
+        const materialRequestsCreateMatch = location.pathname.match(/^\/projects\/(\d+)\/blocks\/(\d+)\/material-requests\/create$/);
+        if (materialRequestsCreateMatch) {
+          navigate(`/projects/${materialRequestsCreateMatch[1]}/blocks/${materialRequestsCreateMatch[2]}/material-requests`);
+          return;
+        }
+
+        const purchaseOrdersCreateMatch = location.pathname.match(/^\/projects\/(\d+)\/blocks\/(\d+)\/purchase-orders\/create$/);
+        if (purchaseOrdersCreateMatch) {
+          navigate(`/projects/${purchaseOrdersCreateMatch[1]}/blocks/${purchaseOrdersCreateMatch[2]}/purchase-orders`);
+          return;
+        }
+
+        const workPerformedCreateMatch = location.pathname.match(/^\/projects\/(\d+)\/blocks\/(\d+)\/work-performed\/create$/);
+        if (workPerformedCreateMatch) {
+          navigate(`/projects/${workPerformedCreateMatch[1]}/blocks/${workPerformedCreateMatch[2]}/work-performed`);
+          return;
+        }
+
+        if (/^\/projects\/\d+$/.test(location.pathname)) {
+          navigate("/projects");
+          return;
+        }
 
         if (history.length > 1 && !isRootPath) {
           history.pop();
@@ -113,6 +170,7 @@ export default function Router() {
   const { user } = useContext(AuthContext);
   const canManageUsers = user?.role_id === ADMIN_ROLE_ID;
   const canManageSuppliers = SUPPLIER_MANAGER_ROLE_IDS.includes(user?.role_id);
+  const canManageMaterials = MATERIAL_MANAGER_ROLE_IDS.includes(Number(user?.role_id));
   const withSuspense = (element) => <Suspense fallback={<RouteLoader />}>{element}</Suspense>;
 
   return (
@@ -147,6 +205,14 @@ export default function Router() {
             element={canManageSuppliers ? withSuspense(<Suppliers />) : <Navigate to="/dashboard" replace />}
           />
           <Route path="/contractors" element={withSuspense(<Contractors />)} />
+          <Route
+            path="/materials"
+            element={canManageMaterials ? withSuspense(<Materials />) : <Navigate to="/dashboard" replace />}
+          />
+          <Route
+            path="/services"
+            element={canManageMaterials ? withSuspense(<Services />) : <Navigate to="/dashboard" replace />}
+          />
 
           <Route
             path="/projects/:projectId/blocks/:blockId/material-requests"
@@ -187,6 +253,10 @@ export default function Router() {
           <Route
             path="/projects/:projectId/warehouses/:warehouseId/receive"
             element={withSuspense(<WarehouseReceive />)}
+          />
+          <Route
+            path="/projects/:projectId/warehouses/:warehouseId/transfer"
+            element={withSuspense(<WarehouseTransfer />)}
           />
           <Route
             path="/projects/:projectId/warehouses/:warehouseId/write-offs"

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, FileSpreadsheet, FileText, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import { Capacitor } from "@capacitor/core";
@@ -10,18 +10,9 @@ import { reportsFallbackURLs } from "../api/axios";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { useTheme } from "../context/ThemeContext";
 import { themeSurface, themeText } from "../utils/themeStyles";
+import PullToRefresh from "../components/PullToRefresh";
 
-const REPORT_OPTIONS = [
-  { value: "form2", label: "Форма 2" },
-  { value: "form29", label: "Форма 29" }
-];
-
-const REPORT_LABELS = {
-  form2: "Форма 2",
-  form29: "Форма 29"
-};
-
-const REPORT_FORMATS = [
+const BASE_REPORT_FORMATS = [
   { format: "pdf", label: "PDF", icon: FileText },
   { format: "docx", label: "Word", icon: FileText },
   { format: "xlsx", label: "Excel", icon: FileSpreadsheet }
@@ -38,7 +29,8 @@ const getMonthRange = (monthValue) => {
 
   return {
     dateFrom: firstDate.toISOString().slice(0, 10),
-    dateTo: lastDate.toISOString().slice(0, 10)
+    dateTo: lastDate.toISOString().slice(0, 10),
+    label: monthValue
   };
 };
 
@@ -82,13 +74,20 @@ const saveNativeReport = async (blob, filename) => {
   });
 };
 
+const normalizeReportUrl = (reportUrl) => {
+  if (!reportUrl) return "";
+  return reportUrl.startsWith("/") ? reportUrl : `/${reportUrl}`;
+};
+
 export default function ProjectReports() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const { isDark } = useTheme();
 
   const [project, setProject] = useState(null);
+  const [reports, setReports] = useState([]);
   const [dictionaries, setDictionaries] = useState({});
-  const [reportType, setReportType] = useState("form2");
+  const [reportCode, setReportCode] = useState("");
   const [selectedBlockId, setSelectedBlockId] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -96,28 +95,50 @@ export default function ProjectReports() {
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
 
+  const loadInitialData = async () => {
+    const [projectRes, reportRes, dicts] = await Promise.all([
+      getRequest(`/projects/getById/${projectId}`),
+      getRequest("/reportDefinitions/gets"),
+      loadDictionaries(["projectBlocks"])
+    ]);
+
+    if (projectRes?.success) {
+      setProject(projectRes.data);
+    }
+
+    const loadedReports = reportRes?.success ? reportRes.data || [] : [];
+    setReports(loadedReports);
+    if (!reportCode && loadedReports[0]?.code) {
+      setReportCode(loadedReports[0].code);
+    }
+
+    setDictionaries(dicts || {});
+
+    const projectBlocks = (dicts?.projectBlocks || []).filter(
+      (item) => Number(item.project_id) === Number(projectId)
+    );
+    if (!selectedBlockId && projectBlocks[0]?.id) {
+      setSelectedBlockId(String(projectBlocks[0].id));
+    }
+  };
+
   useEffect(() => {
-    const loadInitialData = async () => {
-      const [projectRes, dicts] = await Promise.all([
-        getRequest(`/projects/getById/${projectId}`),
-        loadDictionaries(["projectBlocks"])
-      ]);
-
-      if (projectRes?.success) {
-        setProject(projectRes.data);
-      }
-
-      setDictionaries(dicts || {});
-      const projectBlocks = (dicts?.projectBlocks || []).filter(
-        (item) => Number(item.project_id) === Number(projectId)
-      );
-      if (projectBlocks[0]?.id) {
-        setSelectedBlockId(String(projectBlocks[0].id));
-      }
-    };
-
     loadInitialData();
   }, [projectId]);
+
+  useEffect(() => {
+    const parentPath = `/projects/${projectId}`;
+    if (typeof window === "undefined") return undefined;
+
+    window.history.pushState({ projectReportsBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(parentPath, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate, projectId]);
 
   const blocks = useMemo(
     () =>
@@ -132,16 +153,113 @@ export default function ProjectReports() {
     [blocks, selectedBlockId]
   );
 
-  const currentReportLabel = REPORT_LABELS[reportType] || "Отчет";
+  const selectedReport = useMemo(
+    () => reports.find((item) => item.code === reportCode) || reports[0],
+    [reports, reportCode]
+  );
+
+  const reportFields = useMemo(
+    () => selectedReport?.params_schema?.fields || [],
+    [selectedReport]
+  );
+
+  const availableFormats = useMemo(
+    () =>
+      BASE_REPORT_FORMATS.filter(({ format }) =>
+        selectedReport?.formats ? selectedReport.formats[format] : true
+      ),
+    [selectedReport]
+  );
+
+  const currentReportLabel = selectedReport?.name || "Отчет";
+  const canPreview = selectedReport?.params_schema?.preview !== false;
+  const previewImageSrc = useMemo(() => {
+    if (!previewHtml) return "";
+    const match = previewHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
+    return match?.[1] || "";
+  }, [previewHtml]);
+
+  const resetPreviewState = () => {
+    setPreviewHtml("");
+    setDownloadMenuOpen(false);
+  };
+
+  const buildReportParams = (format) => {
+    if (!selectedReport) return null;
+
+    const params = new URLSearchParams({ format });
+
+    for (const field of reportFields) {
+      if (field.value_from === "projectId") {
+        params.set(field.name || "projectId", String(Number(projectId)));
+        continue;
+      }
+
+      if (field.type === "dict" && field.options_api === "projectBlocks") {
+        if (!selectedBlockId) return null;
+        params.set(field.name || "blockId", String(Number(selectedBlockId)));
+        continue;
+      }
+
+      if (field.type === "month") {
+        const period = getMonthRange(selectedMonth);
+        if (!period) return null;
+        params.set(field.dateFromName || "dateFrom", period.dateFrom);
+        params.set(field.dateToName || "dateTo", period.dateTo);
+      }
+    }
+
+    return params;
+  };
+
+  const handleRefresh = async () => {
+    await loadInitialData();
+
+    if (previewHtml) {
+      await loadPreview();
+    }
+  };
+
+  const buildReportUrl = (baseUrl, format) => {
+    const params = buildReportParams(format);
+    if (!selectedReport || !params) return null;
+
+    return `${baseUrl}${normalizeReportUrl(selectedReport.report_url)}?${params.toString()}`;
+  };
+
+  const validateReportParams = (format = "html") => {
+    if (!selectedReport) {
+      toast.error("Выберите отчет");
+      return false;
+    }
+
+    if (format !== "html" && !selectedReport.formats?.[format]) {
+      toast.error("Формат недоступен для этого отчета");
+      return false;
+    }
+
+    for (const field of reportFields) {
+      if (field.type === "dict" && field.options_api === "projectBlocks" && field.required !== false && !selectedBlockId) {
+        toast.error("Выберите блок");
+        return false;
+      }
+
+      if (field.type === "month" && field.required !== false && !getMonthRange(selectedMonth)) {
+        toast.error("Выберите месяц");
+        return false;
+      }
+    }
+
+    return true;
+  };
 
   const loadPreview = async () => {
-    const range = getMonthRange(selectedMonth);
     const token = getAuthToken();
-
-    if (!selectedBlockId || !range) {
-      toast.error("Выберите блок и месяц");
+    if (!canPreview) {
+      toast.error("Превью недоступно для этого отчета");
       return;
     }
+    if (!validateReportParams("html")) return;
 
     try {
       setLoadingPreview(true);
@@ -151,7 +269,7 @@ export default function ProjectReports() {
 
       for (const url of reportsFallbackURLs()) {
         try {
-          const reportUrl = `${url}/report/${reportType}?blockId=${Number(selectedBlockId)}&dateFrom=${range.dateFrom}&dateTo=${range.dateTo}&format=html`;
+          const reportUrl = buildReportUrl(url, "html");
           const res = await fetch(reportUrl, {
             headers: token ? { Authorization: `Bearer ${token}` } : {}
           });
@@ -183,13 +301,8 @@ export default function ProjectReports() {
   };
 
   const downloadReport = async (format) => {
-    const range = getMonthRange(selectedMonth);
     const token = getAuthToken();
-
-    if (!selectedBlockId || !range) {
-      toast.error("Выберите блок и месяц");
-      return;
-    }
+    if (!validateReportParams(format)) return;
 
     try {
       setDownloadingFormat(format);
@@ -198,7 +311,7 @@ export default function ProjectReports() {
 
       for (const url of reportsFallbackURLs()) {
         try {
-          const reportUrl = `${url}/report/${reportType}?blockId=${Number(selectedBlockId)}&dateFrom=${range.dateFrom}&dateTo=${range.dateTo}&format=${format}`;
+          const reportUrl = buildReportUrl(url, format);
           res = await fetch(reportUrl, {
             headers: token ? { Authorization: `Bearer ${token}` } : {}
           });
@@ -223,7 +336,8 @@ export default function ProjectReports() {
       }
 
       const blob = await res.blob();
-      const fallbackName = `${currentReportLabel} ${selectedBlock?.label || selectedBlockId} ${selectedMonth}.${format}`;
+      const period = getMonthRange(selectedMonth);
+      const fallbackName = `${currentReportLabel} ${selectedBlock?.label || project?.name || projectId} ${period?.label || ""}.${format}`;
       const filename = getFilenameFromDisposition(
         res.headers.get("Content-Disposition"),
         fallbackName
@@ -251,6 +365,54 @@ export default function ProjectReports() {
     }
   };
 
+  const renderReportField = (field) => {
+    if (field.value_from === "projectId") {
+      return null;
+    }
+
+    if (field.type === "dict" && field.options_api === "projectBlocks") {
+      return (
+        <label key={field.name || field.type} className="block">
+          <span className={fieldLabelClass}>{field.label || "Блок"}</span>
+          <select
+            value={selectedBlockId}
+            onChange={(e) => {
+              setSelectedBlockId(e.target.value);
+              resetPreviewState();
+            }}
+            className={compactFieldClass}
+          >
+            <option value="">Выберите блок</option>
+            {blocks.map((block) => (
+              <option key={block.id} value={block.id}>
+                {block.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    if (field.type === "month") {
+      return (
+        <label key={field.name || field.type} className="block">
+          <span className={fieldLabelClass}>{field.label || "Месяц"}</span>
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => {
+              setSelectedMonth(e.target.value);
+              resetPreviewState();
+            }}
+            className={compactFieldClass}
+          />
+        </label>
+      );
+    }
+
+    return null;
+  };
+
   const pageClass = `${themeText.page(isDark)} space-y-4 pb-24`;
   const panelClass = `${themeSurface.panel(isDark)} p-4`;
   const compactFieldClass = isDark
@@ -263,138 +425,114 @@ export default function ProjectReports() {
 
   return (
     <div className={pageClass}>
-      <div className="px-1">
-        <h1 className="text-lg font-semibold">{`Отчеты: ${project?.name || `Проект #${projectId}`}`}</h1>
-      </div>
-
-      <div className={`${panelClass} space-y-4`}>
-        <div className="grid gap-2.5 md:grid-cols-3">
-          <label className="block">
-            <span className={fieldLabelClass}>Тип отчета</span>
-            <select
-              value={reportType}
-              onChange={(e) => {
-                setReportType(e.target.value);
-                setPreviewHtml("");
-                setDownloadMenuOpen(false);
-              }}
-              className={compactFieldClass}
-            >
-              {REPORT_OPTIONS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className={fieldLabelClass}>Блок</span>
-            <select
-              value={selectedBlockId}
-              onChange={(e) => {
-                setSelectedBlockId(e.target.value);
-                setPreviewHtml("");
-                setDownloadMenuOpen(false);
-              }}
-              className={compactFieldClass}
-            >
-              <option value="">Выберите блок</option>
-              {blocks.map((block) => (
-                <option key={block.id} value={block.id}>
-                  {block.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className={fieldLabelClass}>Месяц</span>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => {
-                setSelectedMonth(e.target.value);
-                setPreviewHtml("");
-                setDownloadMenuOpen(false);
-              }}
-              className={compactFieldClass}
-            />
-          </label>
+      <PullToRefresh onRefresh={handleRefresh} disabled={loadingPreview || !!downloadingFormat}>
+        <div className="px-1">
+          <h1 className="text-lg font-semibold">{`Отчеты: ${project?.name || `Проект #${projectId}`}`}</h1>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button onClick={loadPreview} disabled={loadingPreview} className={buttonClass}>
-            {loadingPreview ? "Формирование..." : "Показать"}
-          </button>
+        <div className={`${panelClass} space-y-4`}>
+          <div className="grid gap-2.5 md:grid-cols-3">
+            <label className="block">
+              <span className={fieldLabelClass}>Тип отчета</span>
+              <select
+                value={selectedReport?.code || ""}
+                onChange={(e) => {
+                  setReportCode(e.target.value);
+                  resetPreviewState();
+                }}
+                className={compactFieldClass}
+              >
+                {!reports.length && <option value="">Отчеты не настроены</option>}
+                {reports.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <div className="relative">
-            <button
-              onClick={() => setDownloadMenuOpen((prev) => !prev)}
-              className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-600"
-            >
-              <FileSpreadsheet size={16} />
-              Скачать
-              <ChevronDown size={16} />
+            {reportFields.map(renderReportField)}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button onClick={loadPreview} disabled={loadingPreview || !selectedReport || !canPreview} className={buttonClass}>
+              {loadingPreview ? "Формирование..." : "Показать"}
             </button>
 
-            {downloadMenuOpen && (
-              <div
-                className={`absolute right-0 z-20 mt-2 min-w-[170px] overflow-hidden rounded-lg border shadow-lg ${
-                  isDark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white"
-                }`}
+            <div className="relative">
+              <button
+                onClick={() => setDownloadMenuOpen((prev) => !prev)}
+                disabled={!availableFormats.length || !selectedReport}
+                className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-60"
               >
-                {REPORT_FORMATS.map(({ format, label, icon: Icon }) => {
-                  const loading = downloadingFormat === format;
+                <FileSpreadsheet size={16} />
+                Скачать
+                <ChevronDown size={16} />
+              </button>
 
-                  return (
+              {downloadMenuOpen && (
+                <div
+                  className={`absolute right-0 z-20 mt-2 min-w-[170px] overflow-hidden rounded-lg border shadow-lg ${
+                    isDark ? "border-gray-700 bg-gray-900" : "border-slate-200 bg-white"
+                  }`}
+                >
+                  {availableFormats.map(({ format, label, icon: Icon }) => (
                     <button
                       key={format}
                       onClick={() => {
-                        if (!loading) {
-                          setDownloadMenuOpen(false);
-                        }
+                        setDownloadMenuOpen(false);
                         downloadReport(format);
                       }}
-                      disabled={loading}
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm disabled:opacity-60 ${
-                        isDark ? "text-white hover:bg-gray-800" : "text-black hover:bg-slate-50"
-                      }`}
-                      title={`Скачать ${label}`}
+                      disabled={downloadingFormat === format}
+                      className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${
+                        isDark ? "hover:bg-gray-800" : "hover:bg-slate-100"
+                      } ${downloadingFormat === format ? "opacity-60" : ""}`}
                     >
                       <Icon size={16} />
-                      {loading ? "Скачивание..." : label}
+                      {downloadingFormat === format ? `Формирование ${label}...` : label}
                     </button>
-                  );
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className={`${panelClass} space-y-3`}>
-        <div className="flex items-center gap-2">
-          <Search size={16} className="text-blue-500" />
-          <h2 className="text-base font-semibold">Превью</h2>
+        <div className={`${panelClass} space-y-3`}>
+          <div className="flex items-center gap-2">
+            <Search size={16} className="text-blue-500" />
+            <h2 className="text-base font-semibold">Превью</h2>
+          </div>
+
+          {!previewHtml && (
+            <div className={`text-sm ${mutedTextClass}`}>
+              {canPreview
+                ? "Выберите параметры и нажмите «Показать»."
+                : "Для этого отчета доступно только скачивание."}
+            </div>
+          )}
+
+          {previewHtml && (
+            <div className="overflow-x-auto rounded-xl border border-slate-300/20 bg-white">
+              {previewImageSrc ? (
+                <div className="min-h-[700px] w-max bg-white p-4">
+                  <img
+                    src={previewImageSrc}
+                    alt={`${currentReportLabel} Preview`}
+                    className="block max-w-none"
+                  />
+                </div>
+              ) : (
+                <iframe
+                  title={`${currentReportLabel} Preview`}
+                  srcDoc={previewHtml}
+                  className="h-[900px] w-full bg-white"
+                />
+              )}
+            </div>
+          )}
         </div>
-
-        {!previewHtml && (
-          <div className={`text-sm ${mutedTextClass}`}>
-            Выберите параметры и нажмите «Показать».
-          </div>
-        )}
-
-        {previewHtml && (
-          <div className="overflow-hidden rounded-xl border border-slate-300/20 bg-white">
-            <iframe
-              title={`${currentReportLabel} Preview`}
-              srcDoc={previewHtml}
-              className="h-[900px] w-full bg-white"
-            />
-          </div>
-        )}
-      </div>
+      </PullToRefresh>
     </div>
   );
 }
