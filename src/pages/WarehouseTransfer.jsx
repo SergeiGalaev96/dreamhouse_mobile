@@ -12,12 +12,14 @@ import PullToRefresh from "../components/PullToRefresh";
 import { AuthContext } from "../auth/AuthContext";
 
 const PAGE_SIZE = 10;
+const WAREHOUSE_OPERATION_ROLE_IDS = [1, 5, 10, 11, 15];
 
 export default function WarehouseTransfer() {
   const { projectId, warehouseId } = useParams();
   const navigate = useNavigate();
   const { isDark } = useTheme();
   const { user } = useContext(AuthContext);
+  const canManageWarehouseOperations = WAREHOUSE_OPERATION_ROLE_IDS.includes(Number(user?.role_id));
 
   const [transfers, setTransfers] = useState([]);
   const [pagination, setPagination] = useState(null);
@@ -60,6 +62,15 @@ export default function WarehouseTransfer() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [navigate, projectId, warehouseId]);
+
+  useEffect(() => {
+    if (user && !canManageWarehouseOperations) {
+      toast.error(
+        "Приемка, списания и перемещения доступны только админу, зав. складом, мастеру, ПТО и гл. инженеру"
+      );
+      navigate(`/projects/${projectId}/warehouses/${warehouseId}/warehouse-stocks`, { replace: true });
+    }
+  }, [canManageWarehouseOperations, navigate, projectId, user, warehouseId]);
 
   const loadTransfers = async () => {
     const res = await postRequest("/warehouseTransfers/search", {
@@ -387,67 +398,66 @@ export default function WarehouseTransfer() {
                 </div>
 
                 <div className="mt-2">
-                {!!item.items?.length && (
-                  <div
-                    className={`space-y-1 overflow-hidden border-t transition-all duration-300 ${
-                      expanded ? "max-h-[1000px] pt-2 opacity-100" : "max-h-0 pt-0 opacity-0"
-                    } ${isDark ? "border-gray-800" : "border-slate-200"}`}
-                  >
-                    {item.items.map((transferItem) => (
-                      <div
-                        key={transferItem.id}
-                        className={`flex items-center justify-between gap-3 text-[11px] ${themeText.secondary(isDark)}`}
-                      >
-                        <span className="truncate">{getDictName("materials", transferItem.material_id)}</span>
-                        <span className="whitespace-nowrap">
-                          {formatQuantity(transferItem.quantity)} {getDictName("unitsOfMeasure", transferItem.unit_of_measure)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  {!!item.items?.length && (
+                    <div
+                      className={`space-y-1 overflow-hidden border-t transition-all duration-300 ${expanded ? "max-h-[1000px] pt-2 opacity-100" : "max-h-0 pt-0 opacity-0"
+                        } ${isDark ? "border-gray-800" : "border-slate-200"}`}
+                    >
+                      {item.items.map((transferItem) => (
+                        <div
+                          key={transferItem.id}
+                          className={`flex items-center justify-between gap-3 text-[11px] ${themeText.secondary(isDark)}`}
+                        >
+                          <span className="truncate">{getDictName("materials", transferItem.material_id)}</span>
+                          <span className="whitespace-nowrap">
+                            {formatQuantity(transferItem.quantity)} {getDictName("unitsOfMeasure", transferItem.unit_of_measure)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                {(canSignSender || canSignReceiver || canReject) && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {canSignSender && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          signTransfer(item.id, "sender");
-                        }}
-                        className="rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
-                      >
-                        Подписать отправку
-                      </button>
-                    )}
+                  {(canSignSender || canSignReceiver || canReject) && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {canSignSender && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            signTransfer(item.id, "sender");
+                          }}
+                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
+                        >
+                          Подписать отправку
+                        </button>
+                      )}
 
-                    {canSignReceiver && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          signTransfer(item.id, "receiver");
-                        }}
-                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs text-white hover:bg-emerald-500"
-                      >
-                        Подписать получение
-                      </button>
-                    )}
+                      {canSignReceiver && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            signTransfer(item.id, "receiver");
+                          }}
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs text-white hover:bg-emerald-500"
+                        >
+                          Подписать получение
+                        </button>
+                      )}
 
-                    {canReject && Number(item.status) !== 5 && Number(item.status) !== 4 && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          rejectTransfer(item.id);
-                        }}
-                        className="rounded-lg bg-red-600 px-3 py-2 text-xs text-white hover:bg-red-500"
-                      >
-                        Отклонить
-                      </button>
-                    )}
-                  </div>
-                )}
+                      {canReject && Number(item.status) !== 5 && Number(item.status) !== 4 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            rejectTransfer(item.id);
+                          }}
+                          className="rounded-lg bg-red-600 px-3 py-2 text-xs text-white hover:bg-red-500"
+                        >
+                          Отклонить
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-                {item.comment && <div className={`mt-2 ${themeText.muted(isDark)}`}>{item.comment}</div>}
+                  {item.comment && <div className={`mt-2 ${themeText.muted(isDark)}`}>{item.comment}</div>}
                 </div>
               </div>
             );
@@ -549,9 +559,8 @@ export default function WarehouseTransfer() {
                     return (
                       <div
                         key={item.id}
-                        className={`${themeSurface.panel(isDark)} border p-3 text-xs transition ${
-                          hasQuantity ? selectedItemClass : unselectedItemClass
-                        }`}
+                        className={`${themeSurface.panel(isDark)} border p-3 text-xs transition ${hasQuantity ? selectedItemClass : unselectedItemClass
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
@@ -622,13 +631,12 @@ export default function WarehouseTransfer() {
                 <button
                   onClick={handleCreateTransfer}
                   disabled={!canSubmit}
-                  className={`flex-1 rounded-lg py-3 text-sm font-medium text-white ${
-                    !canSubmit
+                  className={`flex-1 rounded-lg py-3 text-sm font-medium text-white ${!canSubmit
                       ? isDark
                         ? "bg-slate-700 text-slate-300"
                         : "bg-slate-300 text-slate-600"
                       : "bg-blue-600 hover:bg-blue-500"
-                  }`}
+                    }`}
                 >
                   {saving ? "Создание..." : "Создать накладную"}
                 </button>
@@ -638,12 +646,14 @@ export default function WarehouseTransfer() {
         </div>
       )}
 
-      <button
-        onClick={openCreateModal}
-        className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl transition hover:scale-105 hover:bg-green-500"
-      >
-        <Plus size={30} className="text-white" />
-      </button>
+      {canManageWarehouseOperations && (
+        <button
+          onClick={openCreateModal}
+          className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl transition hover:scale-105 hover:bg-green-500"
+        >
+          <Plus size={30} className="text-white" />
+        </button>
+      )}
     </div>
   );
 }

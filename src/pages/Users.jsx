@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+﻿import { useContext, useEffect, useMemo, useState } from "react";
 import {
   Search,
   Users as UsersIcon,
@@ -18,6 +18,67 @@ import { useTheme } from "../context/ThemeContext";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
 import PullToRefresh from "../components/PullToRefresh";
 
+const TEXT = {
+  roleFallback: "Роль",
+  notSelected: "Не выбрано",
+  loadUsersFailed: "Не удалось загрузить пользователей",
+  loadUsersError: "Ошибка при загрузке пользователей",
+  enterLogin: "Введите логин",
+  enterEmail: "Введите email",
+  chooseRole: "Выберите роль",
+  enterPassword: "Введите пароль",
+  chooseSupplier: "Выберите поставщика",
+  chooseContractor: "Выберите подрядчика",
+  supplierAndContractorConflict:
+    "Пользователь не может одновременно быть поставщиком и подрядчиком",
+  saveUserFailed: "Не удалось сохранить пользователя",
+  userUpdated: "Пользователь успешно обновлён",
+  userCreated: "Пользователь успешно создан",
+  saveError: "Ошибка при сохранении",
+  resetPasswordConfirm: "Сбросить пароль для",
+  resetPasswordSuccess: "Пароль сброшен, письмо отправлено",
+  resetPasswordFailed: "Не удалось сбросить пароль",
+  resetPasswordError: "Ошибка при сбросе пароля",
+  selfDeleteForbidden: "Нельзя удалить собственный аккаунт",
+  deleteUserConfirm: "Удалить пользователя",
+  userDeleted: "Пользователь удалён",
+  deleteUserFailed: "Не удалось удалить пользователя",
+  deleteUserError: "Ошибка при удалении",
+  adminOnly:
+    "Доступ к управлению пользователями есть только у администратора.",
+  users: "Пользователи",
+  newUser: "Новый",
+  searchPlaceholder: "Поиск по имени, email, логину или телефону",
+  allRoles: "Все роли",
+  reset: "Сбросить",
+  loadingUsers: "Загрузка пользователей...",
+  usersNotFound: "Пользователи не найдены",
+  phone: "Телефон",
+  supplier: "Поставщик",
+  contractor: "Подрядчик",
+  createdAt: "Создан",
+  delete: "Удалить",
+  resetPassword: "Сбросить пароль",
+  edit: "Изменить",
+  editUser: "Редактирование пользователя",
+  createUserTitle: "Новый пользователь",
+  editUserSubtitle: "Обновление данных пользователя",
+  createUserSubtitle: "Создание нового аккаунта",
+  login: "Логин",
+  password: "Пароль",
+  firstName: "Имя",
+  lastName: "Фамилия",
+  middleName: "Отчество",
+  role: "Роль",
+  chooseRoleOption: "Выберите роль",
+  chooseSupplierOption: "Выберите поставщика",
+  chooseContractorOption: "Выберите подрядчика",
+  cancel: "Отмена",
+  saving: "Сохранение...",
+  save: "Сохранить",
+  create: "Создать"
+};
+
 const emptyForm = {
   username: "",
   email: "",
@@ -32,14 +93,26 @@ const emptyForm = {
 };
 
 const getRoleLabel = (roles, roleId) =>
-  roles.find((role) => role.id === Number(roleId))?.label || `Роль #${roleId}`;
+  roles.find((role) => role.id === Number(roleId))?.label || `${TEXT.roleFallback} #${roleId}`;
 
 const getEntityLabel = (items, id) =>
-  items.find((item) => item.id === Number(id))?.label || "Не выбрано";
+  items.find((item) => item.id === Number(id))?.label || TEXT.notSelected;
 
 const normalizeLabel = (value) => (value || "").trim().toLowerCase();
-const isSupplierRole = (role) => normalizeLabel(role?.label).includes("постав");
-const isContractorRole = (role) => normalizeLabel(role?.label).includes("подряд");
+const isSupplierRole = (role) =>
+  normalizeLabel(role?.label).includes("постав");
+
+const isContractorRole = (role) =>
+  normalizeLabel(role?.label).includes("подряд");
+
+function Field({ label, children, secondaryTextClass }) {
+  return (
+    <div>
+      <div className={`mb-1 text-xs ${secondaryTextClass}`}>{label}</div>
+      {children}
+    </div>
+  );
+}
 
 export default function Users() {
   const { user } = useContext(AuthContext);
@@ -56,7 +129,10 @@ export default function Users() {
   const [form, setForm] = useState(emptyForm);
 
   const isAdmin = user?.role_id === 1;
-  const selectedRole = useMemo(() => dictionaries.userRoles.find((role) => role.id === Number(form.role_id)), [dictionaries.userRoles, form.role_id]);
+  const selectedRole = useMemo(
+    () => dictionaries.userRoles.find((role) => role.id === Number(form.role_id)),
+    [dictionaries.userRoles, form.role_id]
+  );
   const showSupplierField = isSupplierRole(selectedRole);
   const showContractorField = isContractorRole(selectedRole);
 
@@ -76,12 +152,16 @@ export default function Users() {
       const payload = { page: 1, size: 200 };
       if (search.trim()) payload.search = search.trim();
       if (roleFilter) payload.role_id = Number(roleFilter);
+
       const res = await postRequest("/users/search", payload);
-      if (res?.success) setItems(res.data || []);
-      else toast.error(res?.message || "Не удалось загрузить пользователей");
+      if (res?.success) {
+        setItems(res.data || []);
+      } else {
+        toast.error(res?.message || TEXT.loadUsersFailed);
+      }
     } catch (error) {
       console.error("Users load error", error);
-      toast.error("Ошибка загрузки пользователей");
+      toast.error(TEXT.loadUsersError);
     } finally {
       setLoading(false);
     }
@@ -150,13 +230,13 @@ export default function Users() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.username.trim()) return toast.error("Введите логин");
-    if (!form.email.trim()) return toast.error("Введите email");
-    if (!form.role_id) return toast.error("Выберите роль");
-    if (!editingUser && !form.password.trim()) return toast.error("Введите пароль");
-    if (showSupplierField && !form.supplier_id) return toast.error("Выберите поставщика");
-    if (showContractorField && !form.contractor_id) return toast.error("Выберите подрядчика");
-    if (form.supplier_id && form.contractor_id) return toast.error("Пользователь не может быть одновременно поставщиком и подрядчиком");
+    if (!form.username.trim()) return toast.error(TEXT.enterLogin);
+    if (!form.email.trim()) return toast.error(TEXT.enterEmail);
+    if (!form.role_id) return toast.error(TEXT.chooseRole);
+    if (!editingUser && !form.password.trim()) return toast.error(TEXT.enterPassword);
+    if (showSupplierField && !form.supplier_id) return toast.error(TEXT.chooseSupplier);
+    if (showContractorField && !form.contractor_id) return toast.error(TEXT.chooseContractor);
+    if (form.supplier_id && form.contractor_id) return toast.error(TEXT.supplierAndContractorConflict);
 
     try {
       setSaving(true);
@@ -178,71 +258,68 @@ export default function Users() {
         : await postRequest("/users/createUser", { ...payload, password: form.password });
 
       if (!res?.success) {
-        toast.error(res?.message || "Не удалось сохранить пользователя");
+        toast.error(res?.message || TEXT.saveUserFailed);
         return;
       }
 
-      toast.success(editingUser ? "Пользователь обновлен" : "Пользователь создан");
+      toast.success(editingUser ? TEXT.userUpdated : TEXT.userCreated);
       closeForm();
       await loadUsers();
     } catch (error) {
       console.error("User save error", error);
-      toast.error(error?.response?.data?.message || "Ошибка сохранения");
+      toast.error(error?.response?.data?.message || TEXT.saveError);
     } finally {
       setSaving(false);
     }
   };
 
   const handleResetPassword = async (item) => {
-    if (!window.confirm(`Сбросить пароль для ${item.username}?`)) return;
+    if (!window.confirm(`${TEXT.resetPasswordConfirm} ${item.username}?`)) return;
     try {
       const res = await putRequest(`/users/resetPassword/${item.id}`);
-      if (res?.success) toast.success("Пароль сброшен, письмо отправлено");
-      else toast.error(res?.message || "Не удалось сбросить пароль");
+      if (res?.success) toast.success(TEXT.resetPasswordSuccess);
+      else toast.error(res?.message || TEXT.resetPasswordFailed);
     } catch (error) {
       console.error("Reset password error", error);
-      toast.error(error?.response?.data?.message || "Ошибка сброса пароля");
+      toast.error(error?.response?.data?.message || TEXT.resetPasswordError);
     }
   };
 
   const handleDelete = async (item) => {
-    if (item.id === user?.id) return toast.error("Свой аккаунт удалить нельзя");
-    if (!window.confirm(`Удалить пользователя ${item.username}?`)) return;
+    if (item.id === user?.id) return toast.error(TEXT.selfDeleteForbidden);
+    if (!window.confirm(`${TEXT.deleteUserConfirm} ${item.username}?`)) return;
     try {
       const res = await deleteRequest(`/users/delete/${item.id}`);
       if (res?.success) {
-        toast.success("Пользователь удален");
+        toast.success(TEXT.userDeleted);
         await loadUsers();
       } else {
-        toast.error(res?.message || "Не удалось удалить пользователя");
+        toast.error(res?.message || TEXT.deleteUserFailed);
       }
     } catch (error) {
       console.error("Delete user error", error);
-      toast.error(error?.response?.data?.message || "Ошибка удаления");
+      toast.error(error?.response?.data?.message || TEXT.deleteUserError);
     }
   };
 
   if (!isAdmin) {
-    return <div className="rounded-xl border border-red-900/50 bg-red-950/40 p-4 text-sm text-red-200">Доступ к управлению пользователями есть только у администратора.</div>;
+    return (
+      <div className="rounded-xl border border-red-900/50 bg-red-950/40 p-4 text-sm text-red-200">
+        {TEXT.adminOnly}
+      </div>
+    );
   }
-
-  const Field = ({ label, children }) => (
-    <div>
-      <div className={`mb-1 text-xs ${secondaryTextClass}`}>{label}</div>
-      {children}
-    </div>
-  );
 
   return (
     <div className={pageClass}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <UsersIcon size={20} className="text-blue-400" />
-          <h1 className="text-lg font-semibold">Пользователи</h1>
+          <h1 className="text-lg font-semibold">{TEXT.users}</h1>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-500">
           <Plus size={16} />
-          Новый
+          {TEXT.newUser}
         </button>
       </div>
 
@@ -250,48 +327,48 @@ export default function Users() {
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search size={16} className={`absolute left-3 top-3 ${secondaryTextClass}`} />
-            <input value={inputSearch} onChange={(e) => setInputSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder="Поиск по имени, email, логину, телефону" className={searchInputClass} />
+            <input value={inputSearch} onChange={(e) => setInputSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearch()} placeholder={TEXT.searchPlaceholder} className={searchInputClass} />
           </div>
           <button onClick={handleSearch} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500">Go</button>
         </div>
 
         <div className="flex gap-2">
           <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className={inputClass}>
-            <option value="">Все роли</option>
+            <option value="">{TEXT.allRoles}</option>
             {dictionaries.userRoles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}
           </select>
           <button onClick={() => { setInputSearch(""); setSearch(""); setRoleFilter(""); }} className={`${subtleButtonClass} flex items-center gap-2`}>
             <RefreshCcw size={16} />
-            Сброс
+            {TEXT.reset}
           </button>
         </div>
       </div>
 
       <PullToRefresh className="space-y-2.5" onRefresh={loadUsers} disabled={loading || formOpen}>
-        {loading && <div className={`${panelClass} text-sm ${secondaryTextClass}`}>Загрузка пользователей...</div>}
-        {!loading && items.length === 0 && <div className={`${panelClass} text-sm ${secondaryTextClass}`}>Пользователи не найдены.</div>}
+        {loading && <div className={`${panelClass} text-sm ${secondaryTextClass}`}>{TEXT.loadingUsers}</div>}
+        {!loading && items.length === 0 && <div className={`${panelClass} text-sm ${secondaryTextClass}`}>{TEXT.usersNotFound}</div>}
 
         {!loading && items.map((item) => (
           <div key={item.id} className={cardClass}>
             <div className="mb-2 flex items-start justify-between gap-2">
               <div>
                 <div className="text-sm font-semibold">{[item.first_name, item.last_name].filter(Boolean).join(" ") || item.username}</div>
-                <div className={`text-[11px] ${secondaryTextClass}`}>@{item.username} • {item.email}</div>
+                <div className={`text-[11px] ${secondaryTextClass}`}>@{item.username} {"\u2022"} {item.email}</div>
               </div>
               <div className="rounded-full bg-blue-950 px-2.5 py-1 text-[10px] text-white">{getRoleLabel(dictionaries.userRoles, item.role_id)}</div>
             </div>
 
             <div className={`grid grid-cols-1 gap-1 text-[11px] ${secondaryTextClass}`}>
-              <div>Телефон: {item.phone || "—"}</div>
-              {item.supplier_id && <div>Поставщик: {getEntityLabel(dictionaries.suppliers, item.supplier_id)}</div>}
-              {item.contractor_id && <div>Подрядчик: {getEntityLabel(dictionaries.contractors, item.contractor_id)}</div>}
-              <div>Создан: {formatDateTime(item.created_at)}</div>
+              <div>{TEXT.phone}: {item.phone || "\u2014"}</div>
+              {item.supplier_id && <div>{TEXT.supplier}: {getEntityLabel(dictionaries.suppliers, item.supplier_id)}</div>}
+              {item.contractor_id && <div>{TEXT.contractor}: {getEntityLabel(dictionaries.contractors, item.contractor_id)}</div>}
+              <div>{TEXT.createdAt}: {formatDateTime(item.created_at)}</div>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <button onClick={() => handleDelete(item)} disabled={item.id === user?.id} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-2.5 py-1.5 text-[11px] text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"><Trash2 size={14} />Удалить</button>
-              <button onClick={() => handleResetPassword(item)} className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-2.5 py-1.5 text-[11px] text-white hover:bg-amber-500"><KeyRound size={14} />Сброс пароля</button>
-              <button onClick={() => openEdit(item)} className={`${themeControl.chipButton(isDark)} flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]`}><Pencil size={14} />Изменить</button>
+              <button onClick={() => handleDelete(item)} disabled={item.id === user?.id} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-2.5 py-1.5 text-[11px] text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"><Trash2 size={14} />{TEXT.delete}</button>
+              <button onClick={() => handleResetPassword(item)} className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-2.5 py-1.5 text-[11px] text-white hover:bg-amber-500"><KeyRound size={14} />{TEXT.resetPassword}</button>
+              <button onClick={() => openEdit(item)} className={`${themeControl.chipButton(isDark)} flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]`}><Pencil size={14} />{TEXT.edit}</button>
             </div>
           </div>
         ))}
@@ -302,32 +379,32 @@ export default function Users() {
           <div className={modalClass}>
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <div className="text-lg font-semibold">{editingUser ? "Редактирование пользователя" : "Новый пользователь"}</div>
-                <div className={`text-xs ${secondaryTextClass}`}>{editingUser ? "Обновление данных пользователя" : "Создание нового аккаунта"}</div>
+                <div className="text-lg font-semibold">{editingUser ? TEXT.editUser : TEXT.createUserTitle}</div>
+                <div className={`text-xs ${secondaryTextClass}`}>{editingUser ? TEXT.editUserSubtitle : TEXT.createUserSubtitle}</div>
               </div>
               <button onClick={closeForm} className={secondaryTextClass}><X size={18} /></button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3">
-              <Field label="Логин"><input value={form.username} onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))} className={inputClass} /></Field>
-              <Field label="Email"><input value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} type="email" className={inputClass} /></Field>
-              {!editingUser && <Field label="Пароль"><input value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} type="password" className={inputClass} /></Field>}
-              <Field label="Имя"><input value={form.first_name} onChange={(e) => setForm((prev) => ({ ...prev, first_name: e.target.value }))} className={inputClass} /></Field>
-              <Field label="Фамилия"><input value={form.last_name} onChange={(e) => setForm((prev) => ({ ...prev, last_name: e.target.value }))} className={inputClass} /></Field>
-              <Field label="Отчество"><input value={form.middle_name} onChange={(e) => setForm((prev) => ({ ...prev, middle_name: e.target.value }))} className={inputClass} /></Field>
-              <Field label="Телефон"><input value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} className={inputClass} /></Field>
-              <Field label="Роль">
+              <Field secondaryTextClass={secondaryTextClass} label={TEXT.login}><input value={form.username} onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))} className={inputClass} /></Field>
+              <Field secondaryTextClass={secondaryTextClass} label="Email"><input value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} type="email" className={inputClass} /></Field>
+              {!editingUser && <Field secondaryTextClass={secondaryTextClass} label={TEXT.password}><input value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} type="password" className={inputClass} /></Field>}
+              <Field secondaryTextClass={secondaryTextClass} label={TEXT.firstName}><input value={form.first_name} onChange={(e) => setForm((prev) => ({ ...prev, first_name: e.target.value }))} className={inputClass} /></Field>
+              <Field secondaryTextClass={secondaryTextClass} label={TEXT.lastName}><input value={form.last_name} onChange={(e) => setForm((prev) => ({ ...prev, last_name: e.target.value }))} className={inputClass} /></Field>
+              <Field secondaryTextClass={secondaryTextClass} label={TEXT.middleName}><input value={form.middle_name} onChange={(e) => setForm((prev) => ({ ...prev, middle_name: e.target.value }))} className={inputClass} /></Field>
+              <Field secondaryTextClass={secondaryTextClass} label={TEXT.phone}><input value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} className={inputClass} /></Field>
+              <Field secondaryTextClass={secondaryTextClass} label={TEXT.role}>
                 <select value={form.role_id} onChange={(e) => handleRoleChange(e.target.value)} className={inputClass}>
-                  <option value="">Выберите роль</option>
+                  <option value="">{TEXT.chooseRoleOption}</option>
                   {dictionaries.userRoles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}
                 </select>
               </Field>
-              {showSupplierField && <Field label="Поставщик"><select value={form.supplier_id} onChange={(e) => setForm((prev) => ({ ...prev, supplier_id: e.target.value, contractor_id: "" }))} className={inputClass}><option value="">Выберите поставщика</option>{dictionaries.suppliers.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>}
-              {showContractorField && <Field label="Подрядчик"><select value={form.contractor_id} onChange={(e) => setForm((prev) => ({ ...prev, contractor_id: e.target.value, supplier_id: "" }))} className={inputClass}><option value="">Выберите подрядчика</option>{dictionaries.contractors.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>}
+              {showSupplierField && <Field secondaryTextClass={secondaryTextClass} label={TEXT.supplier}><select value={form.supplier_id} onChange={(e) => setForm((prev) => ({ ...prev, supplier_id: e.target.value, contractor_id: "" }))} className={inputClass}><option value="">{TEXT.chooseSupplierOption}</option>{dictionaries.suppliers.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>}
+              {showContractorField && <Field secondaryTextClass={secondaryTextClass} label={TEXT.contractor}><select value={form.contractor_id} onChange={(e) => setForm((prev) => ({ ...prev, contractor_id: e.target.value, supplier_id: "" }))} className={inputClass}><option value="">{TEXT.chooseContractorOption}</option>{dictionaries.contractors.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></Field>}
 
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={closeForm} className={`flex-1 ${subtleButtonClass}`}>Отмена</button>
-                <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50">{saving ? "Сохранение..." : editingUser ? "Сохранить" : "Создать"}</button>
+                <button type="button" onClick={closeForm} className={`flex-1 ${subtleButtonClass}`}>{TEXT.cancel}</button>
+                <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-50">{saving ? TEXT.saving : editingUser ? TEXT.save : TEXT.create}</button>
               </div>
             </form>
           </div>

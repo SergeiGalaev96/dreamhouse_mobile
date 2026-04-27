@@ -1,13 +1,13 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { postRequest, putRequest } from "../api/request";
 import dayjs from "dayjs";
-import { formatDate } from "../utils/date";
 import { CheckCheck } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { postRequest, putRequest } from "../api/request";
+import PullToRefresh from "../components/PullToRefresh";
 import { SocketContext } from "../context/socket-context";
 import { useTheme } from "../context/ThemeContext";
+import { formatDate } from "../utils/date";
 import { themeText } from "../utils/themeStyles";
-import PullToRefresh from "../components/PullToRefresh";
 
 export default function Notifications() {
   const { socket } = useContext(SocketContext);
@@ -171,67 +171,67 @@ export default function Notifications() {
   const headingClass = `text-lg font-semibold ${themeText.title(isDark)}`;
   const sectionLabelClass = `mb-2 text-sm ${themeText.secondary(isDark)}`;
   const messageClass = `mt-1 text-xs ${themeText.secondary(isDark)}`;
-  const timeClass = isDark ? "mt-2 text-[10px] text-gray-500" : "mt-2 text-[10px] text-gray-500";
-  const loaderClass = isDark ? "h-10 flex items-center justify-center text-gray-500 text-xs" : "h-10 flex items-center justify-center text-gray-500 text-xs";
+  const timeClass = "mt-2 text-[10px] text-gray-500";
+  const loaderClass = "h-10 flex items-center justify-center text-xs text-gray-500";
 
   return (
     <div className={pageClass}>
       <PullToRefresh onRefresh={() => loadNotifications(1, true)} disabled={loading}>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className={headingClass}>Уведомления</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className={headingClass}>Уведомления</h2>
 
-        <button
-          onClick={markAll}
-          className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400"
-        >
-          <CheckCheck size={16} />
-          Прочитать все
-        </button>
-      </div>
+          <button
+            onClick={markAll}
+            className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400"
+          >
+            <CheckCheck size={16} />
+            Прочитать все
+          </button>
+        </div>
 
-      <div className="space-y-4">
-        {sortedDates.map((date) => (
-          <div key={date}>
-            <div className={sectionLabelClass}>{formatDateLabel(date)}</div>
+        <div className="space-y-4">
+          {sortedDates.map((date) => (
+            <div key={date}>
+              <div className={sectionLabelClass}>{formatDateLabel(date)}</div>
 
-            <div className="space-y-2">
-              {grouped[date].map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => !item.is_read && markAsRead(item.id)}
-                  className={`cursor-pointer rounded-lg p-3 transition ${
-                    item.is_read
-                      ? isDark
-                        ? "bg-gray-900"
-                        : "border border-slate-200 bg-white"
-                      : isDark
-                        ? "border border-blue-500/40 bg-blue-900/40"
-                        : "border border-blue-200 bg-blue-50"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className={`text-sm font-medium ${!item.is_read ? "text-blue-500" : isDark ? "text-white" : "text-black"}`}>
-                      {item.title}
-                    </p>
+              <div className="space-y-2">
+                {grouped[date].map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => !item.is_read && markAsRead(item.id)}
+                    className={`cursor-pointer rounded-lg p-3 transition ${
+                      item.is_read
+                        ? isDark
+                          ? "bg-gray-900"
+                          : "border border-slate-200 bg-white"
+                        : isDark
+                          ? "border border-blue-500/40 bg-blue-900/40"
+                          : "border border-blue-200 bg-blue-50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className={`text-sm font-medium ${!item.is_read ? "text-blue-500" : isDark ? "text-white" : "text-black"}`}>
+                        {item.title}
+                      </p>
 
-                    {!item.is_read && (
-                      <span className="mt-1 h-2 w-2 rounded-full bg-blue-400" />
-                    )}
+                      {!item.is_read && (
+                        <span className="mt-1 h-2 w-2 rounded-full bg-blue-400" />
+                      )}
+                    </div>
+
+                    {item.message && <p className={messageClass}>{item.message}</p>}
+                    <div className={timeClass}>{dayjs(item.created_at).format("HH:mm")}</div>
                   </div>
-
-                  {item.message && <p className={messageClass}>{item.message}</p>}
-                  <div className={timeClass}>{dayjs(item.created_at).format("HH:mm")}</div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      <div ref={loaderRef} className={loaderClass}>
-        {loading && "Загрузка..."}
-        {!hasMore && "Больше нет"}
-      </div>
+        <div ref={loaderRef} className={loaderClass}>
+          {loading && "Загрузка..."}
+          {!hasMore && "Больше нет"}
+        </div>
       </PullToRefresh>
     </div>
   );

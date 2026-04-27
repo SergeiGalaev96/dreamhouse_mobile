@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Warehouse } from "lucide-react";
 import toast from "react-hot-toast";
@@ -9,11 +9,16 @@ import { numberHandler } from "../utils/numberInput";
 import { useTheme } from "../context/ThemeContext";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
 import PullToRefresh from "../components/PullToRefresh";
+import { AuthContext } from "../auth/AuthContext";
+
+const WAREHOUSE_OPERATION_ROLE_IDS = [1, 5, 10, 11, 15];
 
 export default function WarehouseReceive() {
   const { projectId, warehouseId } = useParams();
   const navigate = useNavigate();
   const { isDark } = useTheme();
+  const { user } = useContext(AuthContext);
+  const canManageWarehouseOperations = WAREHOUSE_OPERATION_ROLE_IDS.includes(Number(user?.role_id));
 
   const [orders, setOrders] = useState([]);
   const [pagination, setPagination] = useState(null);
@@ -41,6 +46,15 @@ export default function WarehouseReceive() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [navigate, projectId, warehouseId]);
+
+  useEffect(() => {
+    if (user && !canManageWarehouseOperations) {
+      toast.error(
+        "\u041f\u0440\u0438\u0435\u043c\u043a\u0430, \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u044f \u0438 \u043f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b \u0442\u043e\u043b\u044c\u043a\u043e \u0430\u0434\u043c\u0438\u043d\u0443, \u0437\u0430\u0432. \u0441\u043a\u043b\u0430\u0434\u043e\u043c, \u043c\u0430\u0441\u0442\u0435\u0440\u0443, \u041f\u0422\u041e \u0438 \u0433\u043b. \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u0443"
+      );
+      navigate(`/projects/${projectId}/warehouses/${warehouseId}/warehouse-stocks`, { replace: true });
+    }
+  }, [canManageWarehouseOperations, navigate, projectId, user, warehouseId]);
 
   const loadOrders = async () => {
     const res = await postRequest("/purchaseOrders/search", {

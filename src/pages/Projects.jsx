@@ -406,150 +406,150 @@ export default function Projects() {
 
             <form onSubmit={saveProject} className="flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Название</div>
+                    <input
+                      value={projectForm.name}
+                      onChange={(e) => handleProjectFormChange("name", e.target.value)}
+                      className={modalInputClass}
+                      placeholder="Название объекта"
+                    />
+                  </div>
+
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Заказчик</div>
+                    <input
+                      value={projectForm.customer_name}
+                      onChange={(e) => handleProjectFormChange("customer_name", e.target.value)}
+                      className={modalInputClass}
+                      placeholder="Заказчик"
+                    />
+                  </div>
+
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Бюджет</div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={projectForm.planned_budget}
+                      onChange={(e) => handleProjectFormChange("planned_budget", e.target.value)}
+                      className={modalInputClass}
+                      placeholder="Плановый бюджет"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Название</div>
+                  <div className={`mb-1 text-xs ${subTextClass}`}>Адрес</div>
                   <input
-                    value={projectForm.name}
-                    onChange={(e) => handleProjectFormChange("name", e.target.value)}
+                    value={projectForm.address}
+                    onChange={(e) => handleProjectFormChange("address", e.target.value)}
                     className={modalInputClass}
-                    placeholder="Название объекта"
+                    placeholder="Адрес"
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Дата начала</div>
+                    <input
+                      type="date"
+                      value={projectForm.start_date}
+                      onChange={(e) => handleProjectFormChange("start_date", e.target.value)}
+                      className={modalInputClass}
+                    />
+                  </div>
+
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Дата окончания</div>
+                    <input
+                      type="date"
+                      value={projectForm.end_date}
+                      onChange={(e) => handleProjectFormChange("end_date", e.target.value)}
+                      className={modalInputClass}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Менеджер</div>
+                    <select
+                      value={projectForm.manager_id}
+                      onChange={(e) => handleProjectFormChange("manager_id", e.target.value)}
+                      className={modalInputClass}
+                    >
+                      <option value="">Не выбран</option>
+                      {users.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Прораб</div>
+                    <select
+                      value={projectForm.foreman_id}
+                      onChange={(e) => handleProjectFormChange("foreman_id", e.target.value)}
+                      className={modalInputClass}
+                    >
+                      <option value="">Не выбран</option>
+                      {users.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Мастер</div>
+                    <select
+                      value={projectForm.master_id}
+                      onChange={(e) => handleProjectFormChange("master_id", e.target.value)}
+                      className={modalInputClass}
+                    >
+                      <option value="">Не выбран</option>
+                      {users.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className={`mb-1 text-xs ${subTextClass}`}>Кладовщик</div>
+                    <select
+                      value={projectForm.warehouse_manager_id}
+                      onChange={(e) => handleProjectFormChange("warehouse_manager_id", e.target.value)}
+                      className={modalInputClass}
+                    >
+                      <option value="">Не выбран</option>
+                      {users.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Заказчик</div>
-                  <input
-                    value={projectForm.customer_name}
-                    onChange={(e) => handleProjectFormChange("customer_name", e.target.value)}
-                    className={modalInputClass}
-                    placeholder="Заказчик"
+                  <div className={`mb-1 text-xs ${subTextClass}`}>Комментарий</div>
+                  <textarea
+                    value={projectForm.description}
+                    onChange={(e) => handleProjectFormChange("description", e.target.value)}
+                    className={`${modalInputClass} min-h-[72px] resize-none`}
+                    placeholder="Комментарий"
                   />
                 </div>
-
-                <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Бюджет</div>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={projectForm.planned_budget}
-                    onChange={(e) => handleProjectFormChange("planned_budget", e.target.value)}
-                    className={modalInputClass}
-                    placeholder="Плановый бюджет"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className={`mb-1 text-xs ${subTextClass}`}>Адрес</div>
-                <input
-                  value={projectForm.address}
-                  onChange={(e) => handleProjectFormChange("address", e.target.value)}
-                  className={modalInputClass}
-                  placeholder="Адрес"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Дата начала</div>
-                  <input
-                    type="date"
-                    value={projectForm.start_date}
-                    onChange={(e) => handleProjectFormChange("start_date", e.target.value)}
-                    className={modalInputClass}
-                  />
-                </div>
-
-                <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Дата окончания</div>
-                  <input
-                    type="date"
-                    value={projectForm.end_date}
-                    onChange={(e) => handleProjectFormChange("end_date", e.target.value)}
-                    className={modalInputClass}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Менеджер</div>
-                  <select
-                    value={projectForm.manager_id}
-                    onChange={(e) => handleProjectFormChange("manager_id", e.target.value)}
-                    className={modalInputClass}
-                  >
-                    <option value="">Не выбран</option>
-                    {users.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Прораб</div>
-                  <select
-                    value={projectForm.foreman_id}
-                    onChange={(e) => handleProjectFormChange("foreman_id", e.target.value)}
-                    className={modalInputClass}
-                  >
-                    <option value="">Не выбран</option>
-                    {users.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Мастер</div>
-                  <select
-                    value={projectForm.master_id}
-                    onChange={(e) => handleProjectFormChange("master_id", e.target.value)}
-                    className={modalInputClass}
-                  >
-                    <option value="">Не выбран</option>
-                    {users.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div className={`mb-1 text-xs ${subTextClass}`}>Кладовщик</div>
-                  <select
-                    value={projectForm.warehouse_manager_id}
-                    onChange={(e) => handleProjectFormChange("warehouse_manager_id", e.target.value)}
-                    className={modalInputClass}
-                  >
-                    <option value="">Не выбран</option>
-                    {users.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <div className={`mb-1 text-xs ${subTextClass}`}>Комментарий</div>
-                <textarea
-                  value={projectForm.description}
-                  onChange={(e) => handleProjectFormChange("description", e.target.value)}
-                  className={`${modalInputClass} min-h-[72px] resize-none`}
-                  placeholder="Комментарий"
-                />
-              </div>
               </div>
 
               <div className="flex gap-2 border-t pt-2">

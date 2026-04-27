@@ -37,6 +37,8 @@ import { Search, ClipboardList, Plus } from "lucide-react";
 import toast from "react-hot-toast";
 import { act } from "react";
 
+const WORK_PERFORMED_CREATE_ROLE_IDS = [1, 4, 10, 11, 15];
+
 export default function WorkPerformed() {
 
   const { projectId, blockId } = useParams();
@@ -45,6 +47,7 @@ export default function WorkPerformed() {
   const { isDark } = useTheme();
 
   const roleId = user?.role_id;
+  const canCreateWorkPerformed = WORK_PERFORMED_CREATE_ROLE_IDS.includes(Number(roleId));
 
   const [acts, setActs] = useState([]);
   const [search, setSearch] = useState("");
@@ -1266,14 +1269,16 @@ export default function WorkPerformed() {
       )}
 
       {/* CREATE */}
-      <button
-        onClick={() =>
-          navigate(`/projects/${projectId}/blocks/${blockId}/work-performed-create`)
-        }
-        className="fixed bottom-20 right-8 w-16 h-16 rounded-full bg-green-600 flex items-center justify-center shadow-xl"
-      >
-        <Plus size={28} className="text-white" />
-      </button>
+      {canCreateWorkPerformed && (
+        <button
+          onClick={() =>
+            navigate(`/projects/${projectId}/blocks/${blockId}/work-performed-create`)
+          }
+          className="fixed bottom-20 right-8 w-16 h-16 rounded-full bg-green-600 flex items-center justify-center shadow-xl"
+        >
+          <Plus size={28} className="text-white" />
+        </button>
+      )}
 
     </div>
 

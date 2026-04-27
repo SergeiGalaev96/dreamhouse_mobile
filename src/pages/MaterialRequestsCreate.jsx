@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Select from "react-select";
 import toast from "react-hot-toast";
 import { FolderKanban, Plus, Search, Upload } from "lucide-react";
 import { postRequest } from "../api/request";
+import { AuthContext } from "../auth/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { numberHandler } from "../utils/numberInput";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
+
+const CREATE_MATERIAL_REQUEST_ROLE_IDS = [1, 4, 10, 11];
 
 const getSelectStyles = (isDark) => ({
   control: (base, state) => ({
@@ -42,7 +45,9 @@ const getSelectStyles = (isDark) => ({
 export default function MaterialRequestsCreate() {
   const { projectId, blockId } = useParams();
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const { isDark } = useTheme();
+  const canCreateMaterialRequests = CREATE_MATERIAL_REQUEST_ROLE_IDS.includes(Number(user?.role_id));
 
   const [estimateItems, setEstimateMaterials] = useState([]);
   const [search, setSearch] = useState("");
@@ -101,6 +106,15 @@ export default function MaterialRequestsCreate() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [navigate, projectId, blockId]);
+
+  useEffect(() => {
+    if (user && !canCreateMaterialRequests) {
+      toast.error(
+        "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u0442\u043e\u043b\u044c\u043a\u043e \u0430\u0434\u043c\u0438\u043d\u0443, \u041f\u0422\u041e, \u0433\u043b. \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u0443 \u0438 \u043f\u0440\u043e\u0440\u0430\u0431\u0443"
+      );
+      navigate(`/projects/${projectId}/blocks/${blockId}/material-requests`, { replace: true });
+    }
+  }, [blockId, canCreateMaterialRequests, navigate, projectId, user]);
 
   const loadMaterials = async () => {
     const res = await postRequest("/materialEstimateItems/search", {

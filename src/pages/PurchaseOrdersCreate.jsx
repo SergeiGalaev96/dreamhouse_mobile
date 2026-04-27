@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Select from "react-select";
 import toast from "react-hot-toast";
 import { FolderKanban, Search } from "lucide-react";
 import { getRequest, postRequest } from "../api/request";
+import { AuthContext } from "../auth/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { formatDateReverse } from "../utils/date";
@@ -40,14 +41,18 @@ const getSelectStyles = (isDark) => ({
   indicatorSeparator: () => ({ display: "none" })
 });
 
+const PURCHASE_CREATE_ROLE_IDS = [1, 7, 10, 11];
+
 export default function PurchaseOrdersCreate() {
   const { projectId, blockId } = useParams();
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const { isDark } = useTheme();
+  const canCreatePurchaseOrders = PURCHASE_CREATE_ROLE_IDS.includes(Number(user?.role_id));
 
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState({});
-  const [expandedId, setExpandedId] = useState(null);
+  const [expandedIds, setExpandedIds] = useState({});
   const [dictionaries, setDictionaries] = useState({});
   const [rates, setRates] = useState([]);
   const [recommendedSuppliers, setRecommendedSuppliers] = useState({});
@@ -85,6 +90,15 @@ export default function PurchaseOrdersCreate() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [navigate, projectId, blockId]);
 
+  useEffect(() => {
+    if (user && !canCreatePurchaseOrders) {
+      toast.error(
+        "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u043a\u0443\u043f\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u0442\u043e\u043b\u044c\u043a\u043e \u0430\u0434\u043c\u0438\u043d\u0443, \u0441\u043d\u0430\u0431\u0436\u0435\u043d\u0446\u0443, \u041f\u0422\u041e \u0438 \u0433\u043b. \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u0443"
+      );
+      navigate(`/projects/${projectId}/blocks/${blockId}/purchase-orders`, { replace: true });
+    }
+  }, [blockId, canCreatePurchaseOrders, navigate, projectId, user]);
+
   const loadRequestItems = async () => {
     const payload = {
       project_id: Number(projectId),
@@ -110,6 +124,7 @@ export default function PurchaseOrdersCreate() {
       "materials",
       "unitsOfMeasure",
       "currencies",
+      "suppliers",
       "materialRequestItemStatuses"
     ]);
     setDictionaries(dicts);
@@ -138,8 +153,29 @@ export default function PurchaseOrdersCreate() {
     return rate?.rate || "";
   };
 
+  const applyRecommendedSupplierToItem = (itemId, suppliers) => {
+    if (!suppliers?.length) return;
+
+    setSelected((prev) => {
+      const current = prev[itemId];
+      if (!current || current.supplier_id) return prev;
+
+      return {
+        ...prev,
+        [itemId]: {
+          ...current,
+          supplier_id: suppliers[0].id,
+          price: suppliers[0].best_price ?? current.price
+        }
+      };
+    });
+  };
+
   const loadRecommendedSuppliers = async (itemId, materialId, currency) => {
-    if (recommendedSuppliers[materialId]) return;
+    if (recommendedSuppliers[materialId]) {
+      applyRecommendedSupplierToItem(itemId, recommendedSuppliers[materialId]);
+      return;
+    }
 
     const res = await getRequest(`/suppliers/recommend/${materialId}/${currency ?? 1}`);
 
@@ -151,21 +187,7 @@ export default function PurchaseOrdersCreate() {
         [materialId]: suppliers
       }));
 
-      if (suppliers.length) {
-        setSelected((prev) => {
-          const current = prev[itemId];
-          if (!current || current.supplier_id) return prev;
-
-          return {
-            ...prev,
-            [itemId]: {
-              ...current,
-              supplier_id: suppliers[0].id,
-              price: suppliers[0].best_price ?? current.price
-            }
-          };
-        });
-      }
+      applyRecommendedSupplierToItem(itemId, suppliers);
     }
   };
 
@@ -236,6 +258,29 @@ export default function PurchaseOrdersCreate() {
         }
       };
     });
+  };
+
+  const handleToggleItem = (item) => {
+    const wasSelected = Boolean(selected[item.id]);
+
+    setExpandedIds((prev) => {
+      if (wasSelected) {
+        const copy = { ...prev };
+        delete copy[item.id];
+        return copy;
+      }
+
+      return {
+        ...prev,
+        [item.id]: true
+      };
+    });
+
+    toggleItem(item);
+
+    if (!wasSelected) {
+      loadRecommendedSuppliers(item.id, item.material_id, item.currency);
+    }
   };
 
   const updateField = (id, field, value) => {
@@ -357,7 +402,7 @@ export default function PurchaseOrdersCreate() {
 
       {items.map((item) => {
         const checked = !!selected[item.id];
-        const expanded = expandedId === item.id;
+        const expanded = checked || Boolean(expandedIds[item.id]);
 
         return (
           <div
@@ -374,7 +419,12 @@ export default function PurchaseOrdersCreate() {
           >
             <div
               onClick={() => {
-                setExpandedId(expanded ? null : item.id);
+                if (!checked) return;
+
+                setExpandedIds((prev) => ({
+                  ...prev,
+                  [item.id]: !prev[item.id]
+                }));
 
                 if (!expanded) {
                   loadRecommendedSuppliers(item.id, item.material_id, item.currency);
@@ -391,6 +441,12 @@ export default function PurchaseOrdersCreate() {
                   Остаток: {item.remaining_quantity}{" "}
                   {getDictName("unitsOfMeasure", item.unit_of_measure)}
                 </span>
+
+                {checked && selected[item.id]?.supplier_id && (
+                  <span className="text-xs text-blue-400">
+                    Поставщик: {getDictName("suppliers", selected[item.id].supplier_id)}
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-col items-end gap-1">
@@ -398,7 +454,7 @@ export default function PurchaseOrdersCreate() {
                   type="checkbox"
                   checked={checked}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={() => toggleItem(item)}
+                  onChange={() => handleToggleItem(item)}
                   className="h-5 w-5 accent-green-500"
                 />
 

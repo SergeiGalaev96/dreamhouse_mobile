@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+﻿import { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { ClipboardList, Plus, Search } from "lucide-react";
@@ -11,6 +11,7 @@ import { loadDictionaries } from "../utils/dictionaryLoader";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
 
 const PURCHASE_STATUS_EDITOR_ROLE_IDS = [1, 7, 10, 11];
+const PURCHASE_CREATE_ROLE_IDS = [1, 7, 10, 11];
 
 export default function PurchaseOrdersList() {
   const { projectId, blockId } = useParams();
@@ -35,6 +36,7 @@ export default function PurchaseOrdersList() {
   const pagerButtonClass = themeControl.subtleButton(isDark);
   const pagerTextClass = `text-sm ${themeText.secondary(isDark)}`;
   const canManagePurchaseStatuses = PURCHASE_STATUS_EDITOR_ROLE_IDS.includes(Number(user?.role_id));
+  const canCreatePurchaseOrders = PURCHASE_CREATE_ROLE_IDS.includes(Number(user?.role_id));
 
   useEffect(() => {
     loadOrders();
@@ -106,7 +108,7 @@ export default function PurchaseOrdersList() {
         toast.error(res.message);
       }
     } catch (e) {
-      toast.error(e?.response?.data?.message || "Ошибка");
+      toast.error(e?.response?.data?.message || "\u041e\u0448\u0438\u0431\u043a\u0430");
     }
   };
 
@@ -114,7 +116,7 @@ export default function PurchaseOrdersList() {
     <div className={pageClass}>
       <div className="flex items-center gap-2">
         <ClipboardList size={20} className="text-blue-400" />
-        <h1 className="text-lg font-semibold">Закуп: {getDictName("projectBlocks", blockId)}</h1>
+        <h1 className="text-lg font-semibold">{"\u0417\u0430\u043a\u0443\u043f:"} {getDictName("projectBlocks", blockId)}</h1>
       </div>
 
       <div className="flex gap-2">
@@ -125,7 +127,7 @@ export default function PurchaseOrdersList() {
           }}
           className={`flex-1 rounded py-2 ${tab === "new" ? "bg-blue-600 text-white" : inactiveTabClass}`}
         >
-          Новые
+          {"\u041d\u043e\u0432\u044b\u0435"}
         </button>
         <button
           onClick={() => {
@@ -134,7 +136,7 @@ export default function PurchaseOrdersList() {
           }}
           className={`flex-1 rounded py-2 ${tab === "active" ? "bg-blue-600 text-white" : inactiveTabClass}`}
         >
-          В доставке
+          {"\u0412 \u0434\u043e\u0441\u0442\u0430\u0432\u043a\u0435"}
         </button>
         <button
           onClick={() => {
@@ -143,7 +145,7 @@ export default function PurchaseOrdersList() {
           }}
           className={`flex-1 rounded py-2 ${tab === "done" ? "bg-blue-600 text-white" : inactiveTabClass}`}
         >
-          Завершенные
+          {"\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043d\u044b\u0435"}
         </button>
       </div>
 
@@ -154,7 +156,7 @@ export default function PurchaseOrdersList() {
             value={inputSearch}
             onChange={(e) => setInputSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            placeholder="Поиск..."
+            placeholder={"\u041f\u043e\u0438\u0441\u043a..."}
             className={inputClass}
           />
         </div>
@@ -163,7 +165,7 @@ export default function PurchaseOrdersList() {
         </button>
       </div>
 
-      <PullToRefresh className="space-y-2.5" onRefresh={loadOrders}>
+      <PullToRefresh contentClassName="space-y-[2px]" onRefresh={loadOrders}>
         {orders.map((order) => {
           const expanded = expandedId === order.id;
           const totalSum = order.items?.reduce((acc, item) => acc + (item.summ || 0), 0);
@@ -173,18 +175,18 @@ export default function PurchaseOrdersList() {
               <div onClick={() => setExpandedId(expanded ? null : order.id)} className="cursor-pointer">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="text-sm">
-                    Заявка №<span className="font-semibold">{order.id}</span>
+                    {"\u0417\u0430\u044f\u0432\u043a\u0430 \u2116"}<span className="font-semibold">{order.id}</span>
                   </div>
                   <div className={`text-xs ${themeText.secondary(isDark)}`}>{formatDateTime(order.created_at)}</div>
                 </div>
 
                 <div className={`mb-2 flex justify-between text-xs ${themeText.secondary(isDark)}`}>
                   <span className="font-medium text-yellow-400">{getDictName("purchaseOrderStatuses", order.status)}</span>
-                  <span>Позиций: {order.items?.length || 0}</span>
+                  <span>{"\u041f\u043e\u0437\u0438\u0446\u0438\u0439:"} {order.items?.length || 0}</span>
                 </div>
 
                 <div className={`text-xs ${themeText.secondary(isDark)}`}>
-                  Сумма: <span className={isDark ? "font-medium text-white" : "font-medium text-black"}>{totalSum}</span>
+                  {"\u0421\u0443\u043c\u043c\u0430:"} <span className={isDark ? "font-medium text-white" : "font-medium text-black"}>{totalSum}</span>
                 </div>
               </div>
 
@@ -203,24 +205,24 @@ export default function PurchaseOrdersList() {
                           </span>
 
                           <span className={themeText.secondary(isDark)}>
-                            Поставщик:{" "}
+                            {"\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a:"}{" "}
                             <span className={isDark ? "text-gray-200" : "text-gray-800"}>
                               {getDictName("suppliers", item.supplier_id)}
                             </span>
                           </span>
 
                           <span className={themeText.secondary(isDark)}>
-                            Цена: {item.price} {getDictName("currencies", item.currency, "code")}
-                            {item.currency_rate && <> | курс: {item.currency_rate}</>}
+                            {"\u0426\u0435\u043d\u0430:"} {item.price} {getDictName("currencies", item.currency, "code")}
+                            {item.currency_rate && <> | {"\u043a\u0443\u0440\u0441:"} {item.currency_rate}</>}
                           </span>
 
-                          <div className="mt-1 flex items-center justify-between">
+                          <div className="mt-1 hidden items-center justify-between gap-3">
                             <span className={themeText.secondary(isDark)}>
-                              Сумма: <span className="font-medium text-green-500">{item.summ}</span>
+                              {"\u0421\u0443\u043c\u043c\u0430:"} <span className="font-medium text-green-500">{item.summ}</span>
                             </span>
 
                             <span
-                              className={`absolute bottom-2 right-2 rounded px-2 py-[2px] text-[11px] ${
+                              className={`shrink-0 rounded px-2 py-[2px] text-[11px] ${
                                 poStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"
                               }`}
                             >
@@ -239,19 +241,33 @@ export default function PurchaseOrdersList() {
                         </div>
                       </div>
 
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span className={themeText.secondary(isDark)}>
+                          {"\u0421\u0443\u043c\u043c\u0430:"} <span className="font-medium text-green-500">{item.summ}</span>
+                        </span>
+
+                        <span
+                          className={`shrink-0 rounded px-2 py-[2px] text-[11px] ${
+                            poStatusStyles[item.status] || "bg-gray-500/10 text-gray-500"
+                          }`}
+                        >
+                          {getDictName("purchaseOrderItemStatuses", item.status)}
+                        </span>
+                      </div>
+
                       {tab === "new" && canManagePurchaseStatuses && (
                         <div className="mt-2 flex gap-2">
                           <button
                             onClick={() => updateStatus(item.id, 6)}
                             className="flex-1 rounded bg-red-600 py-1 text-xs text-white"
                           >
-                            Отменить
+                            {"\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c"}
                           </button>
                           <button
                             onClick={() => updateStatus(item.id, 2)}
                             className="flex-1 rounded bg-green-600 py-1 text-xs text-white"
                           >
-                            На доставку
+                            {"\u041d\u0430 \u0434\u043e\u0441\u0442\u0430\u0432\u043a\u0443"}
                           </button>
                         </div>
                       )}
@@ -266,22 +282,24 @@ export default function PurchaseOrdersList() {
 
       <div className="mt-6 flex justify-center gap-3">
         <button disabled={!pagination?.hasPrev} onClick={() => setPage(page - 1)} className={pagerButtonClass}>
-          Назад
+          {"\u041d\u0430\u0437\u0430\u0434"}
         </button>
         <span className={pagerTextClass}>
           {pagination?.page || page} / {pagination?.pages || 1}
         </span>
         <button disabled={!pagination?.hasNext} onClick={() => setPage(page + 1)} className={pagerButtonClass}>
-          Далее
+          {"\u0414\u0430\u043b\u0435\u0435"}
         </button>
       </div>
 
-      <button
-        onClick={() => navigate(`/projects/${projectId}/blocks/${blockId}/purchase-orders-create`)}
-        className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl hover:bg-green-500"
-      >
-        <Plus size={28} className="text-white" />
-      </button>
+      {canCreatePurchaseOrders && (
+        <button
+          onClick={() => navigate(`/projects/${projectId}/blocks/${blockId}/purchase-orders-create`)}
+          className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl hover:bg-green-500"
+        >
+          <Plus size={28} className="text-white" />
+        </button>
+      )}
     </div>
   );
 }

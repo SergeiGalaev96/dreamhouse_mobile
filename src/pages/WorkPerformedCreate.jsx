@@ -12,12 +12,15 @@ import { useTheme } from "../context/ThemeContext";
 import { AuthContext } from "../auth/AuthContext";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
 
+const WORK_PERFORMED_CREATE_ROLE_IDS = [1, 4, 10, 11, 15];
+
 export default function WorkPerformedCreate() {
   const { projectId, blockId } = useParams();
   const navigate = useNavigate();
   const { isDark } = useTheme();
   const { user } = useContext(AuthContext);
   const canEditAdvancePayment = user?.role_id === 1 || user?.role_id === 10;
+  const canCreateWorkPerformed = WORK_PERFORMED_CREATE_ROLE_IDS.includes(Number(user?.role_id));
 
   const [estimateItems, setEstimateMaterials] = useState([]);
   const [search, setSearch] = useState("");
@@ -75,6 +78,15 @@ export default function WorkPerformedCreate() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [navigate, projectId, blockId]);
+
+  useEffect(() => {
+    if (user && !canCreateWorkPerformed) {
+      toast.error(
+        "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0410\u0412\u0420 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u0442\u043e\u043b\u044c\u043a\u043e \u0430\u0434\u043c\u0438\u043d\u0443, \u041f\u0422\u041e, \u0433\u043b. \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u0443, \u043f\u0440\u043e\u0440\u0430\u0431\u0443 \u0438 \u043c\u0430\u0441\u0442\u0435\u0440\u0443"
+      );
+      navigate(`/projects/${projectId}/blocks/${blockId}/work-performed`, { replace: true });
+    }
+  }, [blockId, canCreateWorkPerformed, navigate, projectId, user]);
 
   const getDictName = (dictName, id, field = "label") =>
     dictionaries[dictName]?.find((item) => item.id === Number(id))?.[field] || "";

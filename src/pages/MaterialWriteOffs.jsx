@@ -11,6 +11,7 @@ import { useTheme } from "../context/ThemeContext";
 import { AuthContext } from "../auth/AuthContext";
 
 const PAGE_SIZE = 10;
+const WAREHOUSE_OPERATION_ROLE_IDS = [1, 5, 10, 11, 15];
 const EMPTY_PAGINATION = {
   page: 1,
   size: PAGE_SIZE,
@@ -61,6 +62,7 @@ export default function MaterialWriteOffs() {
   const navigate = useNavigate();
   const { isDark } = useTheme();
   const { user } = useContext(AuthContext);
+  const canManageWarehouseOperations = WAREHOUSE_OPERATION_ROLE_IDS.includes(Number(user?.role_id));
 
   const [activeTab, setActiveTab] = useState("avr");
   const [items, setItems] = useState([]);
@@ -304,6 +306,15 @@ export default function MaterialWriteOffs() {
       window.removeEventListener("popstate", handlePopState);
     };
   }, [navigate, projectId, warehouseId]);
+
+  useEffect(() => {
+    if (user && !canManageWarehouseOperations) {
+      toast.error(
+        "\u041f\u0440\u0438\u0435\u043c\u043a\u0430, \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u044f \u0438 \u043f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b \u0442\u043e\u043b\u044c\u043a\u043e \u0430\u0434\u043c\u0438\u043d\u0443, \u0437\u0430\u0432. \u0441\u043a\u043b\u0430\u0434\u043e\u043c, \u043c\u0430\u0441\u0442\u0435\u0440\u0443, \u041f\u0422\u041e \u0438 \u0433\u043b. \u0438\u043d\u0436\u0435\u043d\u0435\u0440\u0443"
+      );
+      navigate(`/projects/${projectId}/warehouses/${warehouseId}/warehouse-stocks`, { replace: true });
+    }
+  }, [canManageWarehouseOperations, navigate, projectId, user, warehouseId]);
 
   useEffect(() => {
     setItems([]);
@@ -773,12 +784,14 @@ export default function MaterialWriteOffs() {
         </button>
       </div>
 
-      <button
-        onClick={openCreateModal}
-        className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-red-600 shadow-xl transition hover:scale-105 hover:bg-red-500"
-      >
-        <Minus size={28} className="text-white" />
-      </button>
+      {canManageWarehouseOperations && (
+        <button
+          onClick={openCreateModal}
+          className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-red-600 shadow-xl transition hover:scale-105 hover:bg-red-500"
+        >
+          <Minus size={28} className="text-white" />
+        </button>
+      )}
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/60">

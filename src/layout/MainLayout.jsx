@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+﻿import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   FolderKanban,
@@ -51,6 +51,7 @@ export default function MainLayout() {
     if (isSupplier && location.pathname.startsWith("/projects")) {
       navigate("/supplier-orders");
     }
+
   }, [user, isSupplier, location.pathname, navigate]);
 
   const triggerNotificationFeedback = useCallback(() => {
@@ -92,6 +93,12 @@ export default function MainLayout() {
       const previousCount = notificationsCountRef.current;
       notificationsCountRef.current = nextCount;
       setNotificationsCount(nextCount);
+
+      if (nextCount !== previousCount) {
+        window.dispatchEvent(new CustomEvent("notifications:serverCountChanged", {
+          detail: { count: nextCount }
+        }));
+      }
 
       if (withFeedback && nextCount > previousCount) {
         triggerNotificationFeedback();
@@ -465,3 +472,5 @@ export default function MainLayout() {
     </div>
   );
 }
+
+

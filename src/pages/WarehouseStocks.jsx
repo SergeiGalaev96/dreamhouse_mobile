@@ -20,6 +20,7 @@ import { AuthContext } from "../auth/AuthContext";
 
 const PAGE_SIZE = 10;
 const WAREHOUSE_EDITOR_ROLE_IDS = [1, 10];
+const WAREHOUSE_OPERATION_ROLE_IDS = [1, 5, 10, 11, 15];
 const EMPTY_WAREHOUSE_FORM = {
   name: "",
   address: "",
@@ -60,6 +61,7 @@ export default function WarehouseStocksList() {
     ? "bg-gray-800 text-white"
     : "border border-slate-300 bg-white text-black";
   const canManageWarehouse = WAREHOUSE_EDITOR_ROLE_IDS.includes(Number(user?.role_id));
+  const canManageWarehouseOperations = WAREHOUSE_OPERATION_ROLE_IDS.includes(Number(user?.role_id));
 
   useEffect(() => {
     loadDicts();
@@ -485,28 +487,30 @@ export default function WarehouseStocksList() {
         </button>
       </div>
 
-      <div className="fixed bottom-20 right-8 flex flex-col gap-3">
-        <button
-          onClick={() => navigate(`/projects/${projectId}/warehouses/${warehouseId}/transfer`)}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 shadow-xl transition hover:scale-105 hover:bg-blue-500"
-        >
-          <ArrowLeftRight size={28} className="text-white" />
-        </button>
+      {canManageWarehouseOperations && (
+        <div className="fixed bottom-20 right-8 flex flex-col gap-3">
+          <button
+            onClick={() => navigate(`/projects/${projectId}/warehouses/${warehouseId}/transfer`)}
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 shadow-xl transition hover:scale-105 hover:bg-blue-500"
+          >
+            <ArrowLeftRight size={28} className="text-white" />
+          </button>
 
-        <button
-          onClick={() => navigate(`/projects/${projectId}/warehouses/${warehouseId}/write-offs`)}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 shadow-xl transition hover:scale-105 hover:bg-red-500"
-        >
-          <Minus size={28} className="text-white" />
-        </button>
+          <button
+            onClick={() => navigate(`/projects/${projectId}/warehouses/${warehouseId}/write-offs`)}
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 shadow-xl transition hover:scale-105 hover:bg-red-500"
+          >
+            <Minus size={28} className="text-white" />
+          </button>
 
-        <button
-          onClick={() => navigate(`/projects/${projectId}/warehouses/${warehouseId}/receive`)}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl transition hover:scale-105 hover:bg-green-500"
-        >
-          <Plus size={28} className="text-white" />
-        </button>
-      </div>
+          <button
+            onClick={() => navigate(`/projects/${projectId}/warehouses/${warehouseId}/receive`)}
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl transition hover:scale-105 hover:bg-green-500"
+          >
+            <Plus size={28} className="text-white" />
+          </button>
+        </div>
+      )}
 
       {warehouseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">

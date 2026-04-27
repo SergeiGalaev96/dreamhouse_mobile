@@ -7,9 +7,16 @@ import { postRequest } from "../api/request";
 export const PushNotificationsProvider = ({ children }) => {
   const { user } = useContext(AuthContext);
   const registeredTokenRef = useRef(null);
+  const registeredUserIdRef = useRef(null);
 
   useEffect(() => {
-    if (!user || !Capacitor.isNativePlatform()) return;
+    if (!user) {
+      registeredTokenRef.current = null;
+      registeredUserIdRef.current = null;
+      return undefined;
+    }
+
+    if (!Capacitor.isNativePlatform()) return undefined;
 
     let mounted = true;
     let listeners = [];
@@ -24,9 +31,16 @@ export const PushNotificationsProvider = ({ children }) => {
         }
 
         const registrationListener = await PushNotifications.addListener("registration", async (token) => {
-          if (!mounted || !token?.value || registeredTokenRef.current === token.value) return;
+          if (!mounted || !token?.value) return;
+
+          const shouldRegister =
+            registeredTokenRef.current !== token.value ||
+            registeredUserIdRef.current !== user.id;
+
+          if (!shouldRegister) return;
 
           registeredTokenRef.current = token.value;
+          registeredUserIdRef.current = user.id;
 
           await postRequest("/pushTokens/register", {
             token: token.value,

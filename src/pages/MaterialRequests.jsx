@@ -28,6 +28,8 @@ const workflow = [
   "planning_engineer"
 ];
 
+const CREATE_MATERIAL_REQUEST_ROLE_IDS = [1, 4, 10, 11];
+
 const miStatusStyles = {
   1: "bg-gray-500/10 text-gray-400",
   2: "bg-yellow-500/10 text-yellow-400",
@@ -43,6 +45,8 @@ export default function MaterialRequests() {
   const { isDark } = useTheme();
 
   const roleId = user?.role_id;
+  const isGlobalMode = !projectId && !blockId;
+  const canCreateMaterialRequests = CREATE_MATERIAL_REQUEST_ROLE_IDS.includes(Number(roleId));
 
   const [requests, setRequests] = useState([]);
   const [search, setSearch] = useState("");
@@ -117,7 +121,7 @@ export default function MaterialRequests() {
 
   const loadRequests = async () => {
     const res = await postRequest("/materialRequests/search", {
-      project_id: Number(projectId),
+      project_id: projectId ? Number(projectId) : null,
       block_id: blockId ? Number(blockId) : null,
       item_statuses: getStatusesByTab(),
       search,
@@ -166,6 +170,7 @@ export default function MaterialRequests() {
 
   const loadDicts = async () => {
     const dicts = await loadDictionaries([
+      "projects",
       "materials",
       "unitsOfMeasure",
       "currencies",
@@ -599,12 +604,14 @@ export default function MaterialRequests() {
         </div>
       )}
 
-      <button
-        onClick={() => navigate(`/projects/${projectId}/blocks/${blockId}/material-request-create`)}
-        className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl transition hover:scale-105 hover:bg-green-500"
-      >
-        <Plus size={28} className="text-white" />
-      </button>
+      {canCreateMaterialRequests && (
+        <button
+          onClick={() => navigate(`/projects/${projectId}/blocks/${blockId}/material-request-create`)}
+          className="fixed bottom-20 right-8 flex h-16 w-16 items-center justify-center rounded-full bg-green-600 shadow-xl transition hover:scale-105 hover:bg-green-500"
+        >
+          <Plus size={28} className="text-white" />
+        </button>
+      )}
     </div>
   );
 }
