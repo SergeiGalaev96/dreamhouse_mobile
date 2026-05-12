@@ -405,6 +405,7 @@ export default function ProjectCard() {
     if (percent < 70) return "bg-yellow-500";
     return "bg-green-500";
   };
+  const getProgressPercentUI = (percent) => Math.min(Math.max(Number(percent) || 0, 0), 100);
 
   const formatMoney = (value) => (!value ? "0" : Number(value).toLocaleString("ru-RU"));
   const formatPercent = (value) => {
@@ -579,272 +580,273 @@ export default function ProjectCard() {
   return (
     <div className={isDark ? "space-y-4 text-white" : "space-y-4 text-black"}>
       <PullToRefresh onRefresh={handleRefresh}>
-      <div className={`${cardClass} space-y-3 p-4`}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className={`select-none truncate text-base font-semibold ${titleClass}`}>{project.name}</h1>
-            <div className={`select-none rounded px-2 py-[3px] text-xs ${projectStatus.color}`}>{projectStatus.label}</div>
+        <div className={`${cardClass} space-y-3 p-4`}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className={`select-none truncate text-base font-semibold ${titleClass}`}>{project.name}</h1>
+              <div className={`select-none rounded px-2 py-[3px] text-xs ${projectStatus.color}`}>{projectStatus.label}</div>
+            </div>
+            {canManageProject && (
+              <div className="flex shrink-0 items-center gap-2">
+                <button onClick={deleteProjectItem} className="rounded bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30">
+                  <Trash2 size={14} />
+                </button>
+                <button onClick={openEditProject} className={themeControl.actionTilePadded(isDark)}>
+                  <Pencil size={14} />
+                </button>
+              </div>
+            )}
           </div>
+
+          <div className={`flex flex-wrap justify-between gap-x-2 text-sm select-none ${subTextClass}`}>
+            <span>{formatDate(project.start_date)} - {formatDate(project.end_date)}</span>
+            <span className={`max-w-[60%] truncate ${textClass}`}>{project.address || "-"}</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className={`mb-1 flex justify-between text-xs select-none ${subTextClass}`}>
+                <span>Бюджет</span>
+                <span className={titleClass}>{Math.round(getBudgetPercentRaw(project))}%</span>
+              </div>
+              <div className={`h-2 w-full rounded ${trackClass} select-none`}>
+                <div className={`${getBudgetColor(project)} h-full`} style={{ width: `${getBudgetPercentUI(project)}%` }} />
+              </div>
+              <div className={`mt-1 flex justify-between text-xs select-none ${mutedTextClass}`}>
+                <span>{formatMoney(project.planned_budget)}</span>
+                <span>{formatMoney(project.actual_budget)}</span>
+              </div>
+            </div>
+
+            <div>
+              <div className={`mb-1 flex justify-between text-xs select-none ${subTextClass}`}>
+                <span>Прогресс</span>
+                <span className={titleClass}>{formatPercent(project.progress_percent)}%</span>
+              </div>
+              <div className={`h-2 w-full rounded ${trackClass} select-none`}>
+                <div className={`${getProgressColor(project.progress_percent)} h-full`} style={{ width: `${getProgressPercentUI(project.progress_percent)}%` }} />
+              </div>
+            </div>
+          </div>
+
+          <div className={`border-t pt-2 ${dividerClass}`}>
+            <div className="flex justify-end">
+              <div onClick={() => setShowTeam(!showTeam)} className="flex cursor-pointer items-center gap-1 text-xs text-blue-500 select-none">
+                Команда
+                <span className={`transition-transform duration-300 ${showTeam ? "rotate-180" : ""}`}>▼</span>
+              </div>
+            </div>
+
+            <div className={`overflow-hidden transition-all duration-300 ${showTeam ? "mt-2 max-h-40 opacity-100" : "max-h-0 opacity-0"}`}>
+              <div className={`space-y-1 text-sm ${textClass}`}>
+                <div className="flex justify-between gap-3"><span className={mutedTextClass}>Менеджер</span><span>{getUserName(project.manager_id)}</span></div>
+                <div className="flex justify-between gap-3"><span className={mutedTextClass}>Прораб</span><span>{getUserName(project.foreman_id)}</span></div>
+                <div className="flex justify-between gap-3"><span className={mutedTextClass}>Мастер</span><span>{getUserName(project.master_id)}</span></div>
+                <div className="flex justify-between gap-3"><span className={mutedTextClass}>Склад</span><span>{getUserName(project.warehouse_manager_id)}</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-1.5 pt-1 text-xs select-none">
+            <div onClick={() => navigate(`/projects/${projectId}/documents`)} className={actionButtonClass}>Юр отдел</div>
+            <div onClick={() => navigate(`/projects/${projectId}/reports`)} className={actionButtonClass}>Отчеты</div>
+            <div onClick={() => navigate(`/projects/${projectId}/tasks`)} className={actionButtonClass}>Задачи</div>
+            <div onClick={openWarehouseStocks} className={actionButtonClass}>Склад</div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-1.5 pt-1 text-xs select-none">
+            <div onClick={() => navigate(`/projects/${projectId}/payments`)} className={actionButtonClass}>Платежи</div>
+            <div onClick={() => navigate(`/projects/${projectId}/sales`)} className={actionButtonClass}>Продажи</div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
           {canManageProject && (
-            <div className="flex shrink-0 items-center gap-2">
-              <button onClick={deleteProjectItem} className="rounded bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30">
-                <Trash2 size={14} />
-              </button>
-              <button onClick={openEditProject} className={themeControl.actionTilePadded(isDark)}>
-                <Pencil size={14} />
+            <div className="flex justify-end">
+              <button
+                onClick={openCreateBlock}
+                className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
+              >
+                <Plus size={14} />
+                Блок
               </button>
             </div>
           )}
-        </div>
 
-        <div className={`flex flex-wrap justify-between gap-x-2 text-sm select-none ${subTextClass}`}>
-          <span>{formatDate(project.start_date)} - {formatDate(project.end_date)}</span>
-          <span className={`max-w-[60%] truncate ${textClass}`}>{project.address || "-"}</span>
-        </div>
+          {blocks.map((block) => {
+            const expanded = expandedBlockId === block.id;
+            const stages = blockStages[block.id] || [];
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <div className={`mb-1 flex justify-between text-xs select-none ${subTextClass}`}>
-              <span>Бюджет</span>
-              <span className={titleClass}>{Math.round(getBudgetPercentRaw(project))}%</span>
-            </div>
-            <div className={`h-2 w-full rounded ${trackClass} select-none`}>
-              <div className={`${getBudgetColor(project)} h-full`} style={{ width: `${getBudgetPercentUI(project)}%` }} />
-            </div>
-            <div className={`mt-1 flex justify-between text-xs select-none ${mutedTextClass}`}>
-              <span>{formatMoney(project.planned_budget)}</span>
-              <span>{formatMoney(project.actual_budget)}</span>
-            </div>
-          </div>
+            return (
+              <div key={block.id} className={`${cardClass} space-y-3 p-3`}>
+                <div onClick={() => toggleBlock(block.id)} className="flex cursor-pointer items-center justify-between gap-3">
+                  <span className={`text-sm font-semibold ${titleClass}`}>{block.name}</span>
+                  {canManageProject && (
+                    <div className="ml-auto mr-3 flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteBlockItem(block);
+                        }}
+                        className="rounded bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditBlock(block);
+                        }}
+                        className={themeControl.actionTilePadded(isDark)}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <span className="text-xs text-blue-500">Этапы {expanded ? "▲" : "▼"}</span>
+                </div>
 
-          <div>
-            <div className={`mb-1 flex justify-between text-xs select-none ${subTextClass}`}>
-              <span>Прогресс</span>
-              <span className={titleClass}>{formatPercent(project.progress_percent)}%</span>
-            </div>
-            <div className={`h-2 w-full rounded ${trackClass} select-none`}>
-              <div className={`${getProgressColor(project.progress_percent)} h-full`} style={{ width: `${project.progress_percent || 0}%` }} />
-            </div>
-          </div>
-        </div>
-
-        <div className={`border-t pt-2 ${dividerClass}`}>
-          <div className="flex justify-end">
-            <div onClick={() => setShowTeam(!showTeam)} className="flex cursor-pointer items-center gap-1 text-xs text-blue-500 select-none">
-              Команда
-              <span className={`transition-transform duration-300 ${showTeam ? "rotate-180" : ""}`}>▼</span>
-            </div>
-          </div>
-
-          <div className={`overflow-hidden transition-all duration-300 ${showTeam ? "mt-2 max-h-40 opacity-100" : "max-h-0 opacity-0"}`}>
-            <div className={`space-y-1 text-sm ${textClass}`}>
-              <div className="flex justify-between gap-3"><span className={mutedTextClass}>Менеджер</span><span>{getUserName(project.manager_id)}</span></div>
-              <div className="flex justify-between gap-3"><span className={mutedTextClass}>Прораб</span><span>{getUserName(project.foreman_id)}</span></div>
-              <div className="flex justify-between gap-3"><span className={mutedTextClass}>Мастер</span><span>{getUserName(project.master_id)}</span></div>
-              <div className="flex justify-between gap-3"><span className={mutedTextClass}>Склад</span><span>{getUserName(project.warehouse_manager_id)}</span></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-4 gap-1.5 pt-1 text-xs select-none">
-          <div onClick={() => navigate(`/projects/${projectId}/documents`)} className={actionButtonClass}>Юр отдел</div>
-          <div onClick={() => navigate(`/projects/${projectId}/reports`)} className={actionButtonClass}>Отчеты</div>
-          <div onClick={() => navigate(`/projects/${projectId}/tasks`)} className={actionButtonClass}>Задачи</div>
-          <div onClick={openWarehouseStocks} className={actionButtonClass}>Склад</div>
-        </div>
-
-        <div className="grid grid-cols-4 gap-1.5 pt-1 text-xs select-none">
-          <div onClick={() => toast("Раздел платежей в работе")} className={actionButtonClass}>Платежи</div>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        {canManageProject && (
-          <div className="flex justify-end">
-            <button
-              onClick={openCreateBlock}
-              className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
-            >
-              <Plus size={14} />
-              Блок
-            </button>
-          </div>
-        )}
-
-        {blocks.map((block) => {
-          const expanded = expandedBlockId === block.id;
-          const stages = blockStages[block.id] || [];
-
-          return (
-            <div key={block.id} className={`${cardClass} space-y-3 p-3`}>
-              <div onClick={() => toggleBlock(block.id)} className="flex cursor-pointer items-center justify-between gap-3">
-                <span className={`text-sm font-semibold ${titleClass}`}>{block.name}</span>
-                {canManageProject && (
-                  <div className="ml-auto mr-3 flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteBlockItem(block);
-                      }}
-                      className="rounded bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditBlock(block);
-                      }}
-                      className={themeControl.actionTilePadded(isDark)}
-                    >
-                      <Pencil size={14} />
-                    </button>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className={`mb-1 flex justify-between text-xs ${subTextClass}`}>
+                      <span>Бюджет</span>
+                      <span className={titleClass}>{Math.round(getBudgetPercentRaw(block))}%</span>
+                    </div>
+                    <div className={`h-2 w-full rounded ${trackClass}`}>
+                      <div className={`${getBudgetColor(block)} h-full`} style={{ width: `${getBudgetPercentUI(block)}%` }} />
+                    </div>
+                    <div className={`mt-1 flex justify-between text-xs ${mutedTextClass}`}>
+                      <span>{formatMoney(block.planned_budget)}</span>
+                      <span>{formatMoney(block.actual_budget)}</span>
+                    </div>
                   </div>
-                )}
-                <span className="text-xs text-blue-500">Этапы {expanded ? "▲" : "▼"}</span>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className={`mb-1 flex justify-between text-xs ${subTextClass}`}>
-                    <span>Бюджет</span>
-                    <span className={titleClass}>{Math.round(getBudgetPercentRaw(block))}%</span>
-                  </div>
-                  <div className={`h-2 w-full rounded ${trackClass}`}>
-                    <div className={`${getBudgetColor(block)} h-full`} style={{ width: `${getBudgetPercentUI(block)}%` }} />
-                  </div>
-                  <div className={`mt-1 flex justify-between text-xs ${mutedTextClass}`}>
-                    <span>{formatMoney(block.planned_budget)}</span>
-                    <span>{formatMoney(block.actual_budget)}</span>
+                  <div>
+                    <div className={`mb-1 flex justify-between text-xs ${subTextClass}`}>
+                      <span>Прогресс</span>
+                      <span className={titleClass}>{formatPercent(block.progress_percent)}%</span>
+                    </div>
+                    <div className={`h-2 w-full rounded ${trackClass}`}>
+                      <div className={`${getProgressColor(block.progress_percent)} h-full`} style={{ width: `${getProgressPercentUI(block.progress_percent)}%` }} />
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <div className={`mb-1 flex justify-between text-xs ${subTextClass}`}>
-                    <span>Прогресс</span>
-                    <span className={titleClass}>{formatPercent(block.progress_percent)}%</span>
-                  </div>
-                  <div className={`h-2 w-full rounded ${trackClass}`}>
-                    <div className={`${getProgressColor(block.progress_percent)} h-full`} style={{ width: `${block.progress_percent || 0}%` }} />
-                  </div>
-                </div>
-              </div>
+                <div className={`overflow-hidden transition-all duration-300 ${expanded ? "mt-2 max-h-[1200px] opacity-100" : "max-h-0 opacity-0"}`}>
+                  <div className={`space-y-3 border-t pt-3 ${dividerClass}`}>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div><div className={`text-xs ${mutedTextClass}`}>Общая площадь</div><div className={textClass}>{block.total_area}</div></div>
+                      <div><div className={`text-xs ${mutedTextClass}`}>Площадь продажи</div><div className={textClass}>{block.sale_area}</div></div>
+                    </div>
 
-              <div className={`overflow-hidden transition-all duration-300 ${expanded ? "mt-2 max-h-[1200px] opacity-100" : "max-h-0 opacity-0"}`}>
-                <div className={`space-y-3 border-t pt-3 ${dividerClass}`}>
-                  <div className="grid grid-cols-3 gap-3 text-sm">
-                    <div><div className={`text-xs ${mutedTextClass}`}>Общая площадь</div><div className={textClass}>{block.total_area}</div></div>
-                    <div><div className={`text-xs ${mutedTextClass}`}>Площадь продажи</div><div className={textClass}>{block.sale_area}</div></div>
-                  </div>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div><div className={`text-xs ${mutedTextClass}`}>Объем работ</div><div className={textClass}>{block.planned_volume}</div></div>
+                      <div><div className={`text-xs ${mutedTextClass}`}>Сделано</div><div className="text-green-500">{block.done_volume}</div></div>
+                      <div><div className={`text-xs ${mutedTextClass}`}>Остаток</div><div className="text-yellow-500">{block.remaining_volume}</div></div>
+                    </div>
 
-                  <div className="grid grid-cols-3 gap-3 text-sm">
-                    <div><div className={`text-xs ${mutedTextClass}`}>Объем работ</div><div className={textClass}>{block.planned_volume}</div></div>
-                    <div><div className={`text-xs ${mutedTextClass}`}>Сделано</div><div className="text-green-500">{block.done_volume}</div></div>
-                    <div><div className={`text-xs ${mutedTextClass}`}>Остаток</div><div className="text-yellow-500">{block.remaining_volume}</div></div>
-                  </div>
+                    <div className={`rounded-xl border px-1 py-2 ${dividerClass}`}>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <div className={`text-sm font-semibold ${titleClass}`}>Этапы и подэтапы</div>
+                          <div className={`text-xs ${subTextClass}`}>Структура блока</div>
+                        </div>
 
-                  <div className={`rounded-xl border px-1 py-2 ${dividerClass}`}>
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div>
-                        <div className={`text-sm font-semibold ${titleClass}`}>Этапы и подэтапы</div>
-                        <div className={`text-xs ${subTextClass}`}>Структура блока</div>
+                        {canManageStructure && (
+                          <button
+                            onClick={() => openCreateStage(block.id)}
+                            className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
+                          >
+                            <Plus size={14} />
+                            Этап
+                          </button>
+                        )}
                       </div>
 
-                      {canManageStructure && (
-                        <button
-                          onClick={() => openCreateStage(block.id)}
-                          className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
-                        >
-                          <Plus size={14} />
-                          Этап
-                        </button>
+                      {loadingStructureBlockId === block.id && (
+                        <div className={`text-sm ${subTextClass}`}>Загрузка этапов...</div>
                       )}
-                    </div>
 
-                    {loadingStructureBlockId === block.id && (
-                      <div className={`text-sm ${subTextClass}`}>Загрузка этапов...</div>
-                    )}
+                      {!loadingStructureBlockId && stages.length === 0 && (
+                        <div className={`text-sm ${subTextClass}`}>Этапы для блока еще не добавлены.</div>
+                      )}
 
-                    {!loadingStructureBlockId && stages.length === 0 && (
-                      <div className={`text-sm ${subTextClass}`}>Этапы для блока еще не добавлены.</div>
-                    )}
+                      <div className="space-y-3">
+                        {stages.map((stage) => {
+                          const subsections = stageSubsections[stage.id] || [];
 
-                    <div className="space-y-3">
-                      {stages.map((stage) => {
-                        const subsections = stageSubsections[stage.id] || [];
-
-                        return (
-                          <div key={stage.id} className={`rounded-xl border px-2 py-2 ${isDark ? "border-gray-800 bg-gray-950/60" : "border-slate-200 bg-slate-50"}`}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className={`break-words text-sm font-semibold ${titleClass}`}>{stage.name}</div>
-                                <div className={`mt-1 text-xs ${mutedTextClass}`}>
-                                  {stage.start_date ? `Начало: ${formatDate(stage.start_date)}` : "Дата не указана"}
-                                  {stage.end_date ? ` • Конец: ${formatDate(stage.end_date)}` : ""}
+                          return (
+                            <div key={stage.id} className={`rounded-xl border px-2 py-2 ${isDark ? "border-gray-800 bg-gray-950/60" : "border-slate-200 bg-slate-50"}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className={`break-words text-sm font-semibold ${titleClass}`}>{stage.name}</div>
+                                  <div className={`mt-1 text-xs ${mutedTextClass}`}>
+                                    {stage.start_date ? `Начало: ${formatDate(stage.start_date)}` : "Дата не указана"}
+                                    {stage.end_date ? ` • Конец: ${formatDate(stage.end_date)}` : ""}
+                                  </div>
                                 </div>
+
+                                {canManageStructure && (
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => deleteStageItem(block.id, stage)} className="rounded-lg bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30">
+                                      <Trash2 size={14} />
+                                    </button>
+                                    <button
+                                      onClick={() => openCreateSubsection(stage.id)}
+                                      className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
+                                    >
+                                      <Plus size={14} />
+                                      Подэтап
+                                    </button>
+                                    <button onClick={() => openEditStage(block.id, stage)} className={themeControl.actionTilePadded(isDark)}>
+                                      <Pencil size={14} />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
 
-                              {canManageStructure && (
-                                <div className="flex items-center gap-2">
-                                  <button onClick={() => deleteStageItem(block.id, stage)} className="rounded-lg bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30">
-                                    <Trash2 size={14} />
-                                  </button>
-                                  <button
-                                    onClick={() => openCreateSubsection(stage.id)}
-                                    className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-500"
-                                  >
-                                    <Plus size={14} />
-                                    Подэтап
-                                  </button>
-                                  <button onClick={() => openEditStage(block.id, stage)} className={themeControl.actionTilePadded(isDark)}>
-                                    <Pencil size={14} />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
+                              <div className="mt-3 space-y-2">
+                                {subsections.length === 0 && (
+                                  <div className={`text-xs ${subTextClass}`}>Подэтапы еще не добавлены.</div>
+                                )}
 
-                            <div className="mt-3 space-y-2">
-                              {subsections.length === 0 && (
-                                <div className={`text-xs ${subTextClass}`}>Подэтапы еще не добавлены.</div>
-                              )}
-
-                              {subsections.map((subsection) => (
-                                <div key={subsection.id} className={`flex items-center justify-between gap-3 rounded-lg border px-2 py-1.5 ${isDark ? "border-gray-800 bg-gray-900/70" : "border-slate-200 bg-white"}`}>
-                                  <div className="min-w-0 flex-1">
-                                    <div className={`break-words text-sm ${textClass}`}>{subsection.name}</div>
-                                  </div>
-
-                                  {canManageStructure && (
-                                    <div className="flex items-center gap-2">
-                                      <button onClick={() => deleteSubsectionItem(block.id, subsection)} className="rounded-lg bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30">
-                                        <Trash2 size={14} />
-                                      </button>
-                                      <button onClick={() => openEditSubsection(stage.id, subsection)} className={themeControl.actionTilePadded(isDark)}>
-                                        <Pencil size={14} />
-                                      </button>
+                                {subsections.map((subsection) => (
+                                  <div key={subsection.id} className={`flex items-center justify-between gap-3 rounded-lg border px-2 py-1.5 ${isDark ? "border-gray-800 bg-gray-900/70" : "border-slate-200 bg-white"}`}>
+                                    <div className="min-w-0 flex-1">
+                                      <div className={`break-words text-sm ${textClass}`}>{subsection.name}</div>
                                     </div>
-                                  )}
-                                </div>
-                              ))}
+
+                                    {canManageStructure && (
+                                      <div className="flex items-center gap-2">
+                                        <button onClick={() => deleteSubsectionItem(block.id, subsection)} className="rounded-lg bg-red-600/20 p-2 text-red-500 hover:bg-red-600/30">
+                                          <Trash2 size={14} />
+                                        </button>
+                                        <button onClick={() => openEditSubsection(stage.id, subsection)} className={themeControl.actionTilePadded(isDark)}>
+                                          <Pencil size={14} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-4 gap-2 text-xs">
-                <div onClick={() => navigate(`/projects/${projectId}/blocks/${block.id}/estimates`)} className={actionButtonClass}>Смета</div>
-                <div onClick={() => navigate(`/projects/${projectId}/blocks/${block.id}/material-requests`)} className={actionButtonClass}>Заявки</div>
-                <div onClick={() => navigate(`/projects/${projectId}/blocks/${block.id}/purchase-orders`)} className={actionButtonClass}>Закуп</div>
-                <div onClick={() => navigate(`/projects/${projectId}/blocks/${block.id}/work-performed`)} className={actionButtonClass}>АВР</div>
+                <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div onClick={() => navigate(`/projects/${projectId}/blocks/${block.id}/estimates`)} className={actionButtonClass}>Смета</div>
+                  <div onClick={() => navigate(`/projects/${projectId}/blocks/${block.id}/material-requests`)} className={actionButtonClass}>Заявки</div>
+                  <div onClick={() => navigate(`/projects/${projectId}/blocks/${block.id}/purchase-orders`)} className={actionButtonClass}>Закуп</div>
+                  <div onClick={() => navigate(`/projects/${projectId}/blocks/${block.id}/work-performed`)} className={actionButtonClass}>АВР</div>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
       </PullToRefresh>
 
       {stageModalOpen && (
@@ -1114,3 +1116,4 @@ export default function ProjectCard() {
     </div>
   );
 }
+

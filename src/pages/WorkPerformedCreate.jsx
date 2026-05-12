@@ -221,7 +221,7 @@ export default function WorkPerformedCreate() {
           price: item.price ?? "",
           currency: item.currency ?? 1,
           currency_rate: item.currency !== 1 ? getRateByCurrency(item.currency) : null,
-          item_type: 1,
+          item_type: Number(item.entry_type) === 2 ? 2 : 1,
           comment: ""
         }
       };
@@ -319,8 +319,34 @@ export default function WorkPerformedCreate() {
     });
   };
 
+  const toNullableNumber = (value) => {
+    if (value === "" || value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const prepareWorkPerformedItem = (item) => {
+    const currency = toNullableNumber(item.currency) || 1;
+
+    return {
+      ...item,
+      material_estimate_item_id: toNullableNumber(item.material_estimate_item_id),
+      service_type: toNullableNumber(item.service_type),
+      service_id: toNullableNumber(item.service_id),
+      unit_of_measure: toNullableNumber(item.unit_of_measure),
+      stage_id: toNullableNumber(item.stage_id),
+      subsection_id: toNullableNumber(item.subsection_id),
+      item_type: toNullableNumber(item.item_type) || 1,
+      quantity: toNullableNumber(item.quantity) || 0,
+      price: toNullableNumber(item.price) || 0,
+      currency,
+      currency_rate: currency === 1 ? null : toNullableNumber(item.currency_rate),
+      comment: item.comment || ""
+    };
+  };
+
   const createWorkPerformed = async () => {
-    const items = Object.values(selected);
+    const items = Object.values(selected).map(prepareWorkPerformedItem);
     if (!items.length) return;
 
     if (!performedPersonName) {

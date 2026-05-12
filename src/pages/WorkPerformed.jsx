@@ -35,9 +35,20 @@ import {
 
 import { Search, ClipboardList, Plus } from "lucide-react";
 import toast from "react-hot-toast";
-import { act } from "react";
 
 const WORK_PERFORMED_CREATE_ROLE_IDS = [1, 4, 10, 11, 15];
+
+const formatMoney = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "0";
+
+  return new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2
+  }).format(amount);
+};
+
+const isSomCurrency = (currency) => ["KGS", "СОМ", "SOM"].includes(String(currency || "").trim().toUpperCase());
 
 export default function WorkPerformed() {
 
@@ -50,6 +61,7 @@ export default function WorkPerformed() {
   const canCreateWorkPerformed = WORK_PERFORMED_CREATE_ROLE_IDS.includes(Number(roleId));
 
   const [acts, setActs] = useState([]);
+  const [paymentsByActId, setPaymentsByActId] = useState({});
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(null);
@@ -91,6 +103,63 @@ export default function WorkPerformed() {
     };
   }, []);
 
+  const loadActPayments = async (actIds = [], { merge = false } = {}) => {
+    const ids = actIds.map((id) => Number(id)).filter(Boolean);
+
+    if (!ids.length) {
+      if (!merge) setPaymentsByActId({});
+      return;
+    }
+
+    const payload = {
+      project_id: Number(projectId),
+      block_id: Number(blockId),
+      entity_type: "workPerformed",
+      page: 1,
+      size: 100
+    };
+
+    if (ids.length === 1) {
+      payload.entity_id = ids[0];
+    } else {
+      payload.entity_ids = ids;
+    }
+
+    const res = await postRequest("/payments/search", payload);
+
+    if (!res.success) {
+      if (!merge) setPaymentsByActId({});
+      return;
+    }
+
+    const grouped = (res.data || []).reduce((acc, payment) => {
+      const actId = Number(payment.entity_id);
+      if (!actId) return acc;
+      acc[actId] = [...(acc[actId] || []), payment];
+      return acc;
+    }, {});
+
+    setPaymentsByActId((prev) => {
+      if (!merge) return grouped;
+
+      const next = { ...prev };
+      ids.forEach((id) => {
+        next[id] = grouped[id] || [];
+      });
+      return next;
+    });
+  };
+
+  const toggleExpandedAct = (actId, expanded) => {
+    if (expanded) {
+      setExpandedId(null);
+      return;
+    }
+
+    setExpandedId(actId);
+    loadActPayments([actId], { merge: true });
+  };
+
   const loadActs = async () => {
     const res = await postRequest("/workPerformed/search", {
       block_id: Number(blockId),
@@ -101,7 +170,7 @@ export default function WorkPerformed() {
 
     if (res.success) {
 
-      // рџ”Ґ РіСЂСѓР·РёРј СЃРјРµС‚С‹
+      // Load estimate context when needed.
       // const dicts = await loadDictionaries(["materialEstimates"]);
 
       // const estimates = [...(dicts.materialEstimates || [])]
@@ -109,7 +178,7 @@ export default function WorkPerformed() {
 
       // const firstEstimateId = estimates[0]?.id || null;
 
-      // рџ”Ґ init СЃСЂР°Р·Сѓ РїСЂРё СѓСЃС‚Р°РЅРѕРІРєРµ
+      // Normalize additional work items before rendering.
       const prepared = res.data.map(a => ({
         ...a,
         items: a.items.map(item => {
@@ -127,8 +196,8 @@ export default function WorkPerformed() {
         })
       }));
       setActs(prepared);
-      console.log("ACTS", res.data)
       setPagination(res.pagination);
+      loadActPayments(prepared.map((act) => act.id));
     }
   };
 
@@ -155,8 +224,6 @@ export default function WorkPerformed() {
   };
 
   const checkToShowInputFields = (item, act) => {
-    if (item.item_type !== 2) return false;
-
     if (role === "planning_engineer" || role === "admin") {
       return !act.signed_by_planning_engineer;
     }
@@ -268,7 +335,6 @@ export default function WorkPerformed() {
         e.target.value = null;
       } else {
         toast.error(res.message || "Ошибка загрузки");
-        console.log(res)
       }
     }
     catch (err) {
@@ -431,8 +497,8 @@ export default function WorkPerformed() {
   const handleTouchEnd = (e) => {
     const endX = e.changedTouches[0].clientX;
 
-    if (startX - endX > 50) nextImage();     // СЃРІР°Р№Рї РІР»РµРІРѕ
-    if (endX - startX > 50) prevImage();     // СЃРІР°Р№Рї РІРїСЂР°РІРѕ
+    if (startX - endX > 50) nextImage();
+    if (endX - startX > 50) prevImage();
   };
 
   const handleWheel = (e) => {
@@ -473,18 +539,14 @@ export default function WorkPerformed() {
 
     const field = getField(stage);
 
-    // СѓР¶Рµ РїРѕРґРїРёСЃР°РЅРѕ
     if (act[field]) return false;
 
-    // Р°РґРјРёРЅ РјРѕР¶РµС‚ РІСЃС‘
     if (role === "admin") return true;
 
-    // РЅРµ СЃРІРѕСЏ СЂРѕР»СЊ
     if (role !== stage) return false;
 
     const index = workflow.indexOf(stage);
 
-    // РїРµСЂРІС‹Р№ СЌС‚Р°Рї
     if (index === 0) return true;
 
     const prevStage = workflow[index - 1];
@@ -498,28 +560,54 @@ export default function WorkPerformed() {
       return act[getField(s)];
     });
   };
+
+  const saveExtraWorkItemPricing = async (item, extra = {}) => {
+    const updatePayload = {
+      ...extra,
+      quantity: item.quantity,
+      price: item.price,
+      coefficient: item.coefficient,
+      currency: item.currency,
+      currency_rate: item.currency_rate
+    };
+
+    const updateRes = await putRequest(`/workPerformedItems/update/${item.id}`, updatePayload);
+
+    if (!updateRes.success) {
+      toast.error("Ошибка обновления позиции акта");
+      return false;
+    }
+
+    return true;
+  };
+
   const approveAct = async (id, stage) => {
 
     const act = acts.find(a => a.id === id);
-
-    console.log("SIGN", act)
 
     /* ---------------- VALIDATION ---------------- */
 
     if (stage === "planning_engineer" || stage === "admin") {
 
       const invalid = act.items
-        .filter(i => i.item_type === 2)
         .some(i => {
-          if (!i.price) return true;
+          const price = Number(i.price);
+          const currencyRate = Number(i.currency_rate);
+
+          if (!Number.isFinite(price) || price <= 0) return true;
           if (!i.currency) return true;
-          if ((i.currency ?? 1) !== 1 && !i.currency_rate) return true;
+          if ((i.currency ?? 1) !== 1 && (!Number.isFinite(currencyRate) || currencyRate <= 0)) return true;
           return false;
         });
 
       if (invalid) {
-        toast.error("Заполните все поля для доп работ!");
+        toast.error("Для подписи ПТО укажите цену по всем позициям");
         return;
+      }
+
+      for (const item of act.items) {
+        const saved = await saveExtraWorkItemPricing(item);
+        if (!saved) return;
       }
     }
 
@@ -531,7 +619,7 @@ export default function WorkPerformed() {
 
     if (isLast) {
 
-      for (const item of act.items.filter(i => i.item_type === 2)) {
+      for (const item of act.items.filter(i => i.item_type === 2 && !i.material_estimate_item_id)) {
 
         const material_estimate_id = await findEstimateByBlock()
 
@@ -554,15 +642,12 @@ export default function WorkPerformed() {
           }
         ];
 
-        console.log("CR BODY", createPayload)
         const createRes = await postRequest("/materialEstimateItems/create", createPayload);
 
         if (!createRes.success) {
           toast.error("Ошибка создания элемента сметы");
           return;
         }
-
-        console.log("CR RES", createRes)
 
         const created = createRes.data?.[0];
 
@@ -572,24 +657,11 @@ export default function WorkPerformed() {
         }
 
         /* ---------------- UPDATE WORK PERFORMED ITEM ---------------- */
-        const updatePayload = {
-          material_estimate_item_id: created.id,
-          price: item.price,
-          coefficient: item.coefficient,
-          currency: item.currency,
-          currency_rate: item.currency_rate
-        };
+        const saved = await saveExtraWorkItemPricing(item, {
+          material_estimate_item_id: created.id
+        });
 
-        console.log("UPD BODY", updatePayload)
-
-        const updateRes = await putRequest(`/workPerformedItems/update/${item.id}`, updatePayload);
-
-        console.log("UPD RES", updateRes)
-
-        if (!updateRes.success) {
-          toast.error("Ошибка обновления позиции акта");
-          return;
-        }
+        if (!saved) return;
       }
     }
 
@@ -623,7 +695,6 @@ export default function WorkPerformed() {
   const findEstimateByBlock = async () => {
     const est = dictionaries["materialEstimates"]?.find(x => x.block_id === Number(blockId));
     const est_id = est.id
-    // console.log("EST ID", est_id)
     return est_id
   }
 
@@ -729,6 +800,9 @@ export default function WorkPerformed() {
           const expanded = expandedId === a.id;
           const total = calcTotal(a.items || []);
           const advancePayment = calcAdvancePayment(a);
+          const actPayments = (paymentsByActId[a.id] || []).filter(
+            (payment) => payment.status_ref?.code === "paid" || Number(payment.status) === 3
+          );
           return (
             <div
               key={a.id}
@@ -736,7 +810,7 @@ export default function WorkPerformed() {
             >
               {/* HEADER */}
               <div
-                onClick={() => setExpandedId(expanded ? null : a.id)}
+                onClick={() => toggleExpandedAct(a.id, expanded)}
                 className="cursor-pointer space-y-1"
               >
 
@@ -808,7 +882,7 @@ export default function WorkPerformed() {
               {/* BUTTONS */}
               <div
                 className="flex flex-wrap gap-1 mt-2"
-                onClick={() => setExpandedId(expanded ? null : a.id)}
+                onClick={() => toggleExpandedAct(a.id, expanded)}
               >
 
                 {workflow.map(stage => {
@@ -1076,6 +1150,39 @@ export default function WorkPerformed() {
 
                   )}
 
+                  <div className={`mt-3 border-t pt-3 text-xs ${isDark ? "border-gray-800" : "border-slate-200"}`}>
+                    <div className={`mb-2 font-semibold ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                      Платежи по АВР
+                    </div>
+
+                    {actPayments.length > 0 ? (
+                      <div className="space-y-1">
+                        {actPayments.map((payment) => (
+                          <div
+                            key={payment.id}
+                            className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 ${isDark ? "bg-gray-800/70" : "bg-slate-100"}`}
+                          >
+                            <span className="min-w-0 truncate">
+                              {payment.title || `Платеж №${payment.id}`}
+                            </span>
+                            <span className="shrink-0 text-right font-medium text-green-500">
+                              {formatMoney(payment.amount)} {payment.currency || "KGS"}
+                              {!isSomCurrency(payment.currency) ? (
+                                <span className={`ml-1 font-normal ${isDark ? "text-gray-400" : "text-slate-500"}`}>
+                                  курс {payment.currency_rate || 1}
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className={`rounded-lg border border-dashed p-3 text-center ${isDark ? "border-gray-800 text-gray-500" : "border-slate-300 text-slate-500"}`}>
+                        Платежей по этому АВР пока нет
+                      </div>
+                    )}
+                  </div>
+
                   <div className={`mt-3 space-y-2 border-t pt-3 ${isDark ? "border-gray-800" : "border-slate-200"}`}>
                     {a.items?.map(item => {
                       const sum = calcSum(item);
@@ -1109,7 +1216,7 @@ export default function WorkPerformed() {
                               {getDictName("blockStages", item.stage_id)}
 
                               {item.subsection_id && (
-                                <> в†’ {getDictName("stageSubsections", item.subsection_id)}</>
+                                <> / {getDictName("stageSubsections", item.subsection_id)}</>
                               )}
                             </span>
 

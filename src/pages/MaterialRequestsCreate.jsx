@@ -153,6 +153,27 @@ export default function MaterialRequestsCreate() {
   const getDictName = (dictName, id, field = "label") =>
     dictionaries[dictName]?.find((item) => item.id === Number(id))?.[field] || "";
 
+  const stageOptions = useMemo(
+    () =>
+      getOptions("blockStages", ["block_id"]).filter((item) =>
+        item.block_id != null ? Number(item.block_id) === Number(blockId) : true
+      ),
+    [dictionaries, blockId]
+  );
+
+  const stageSubsectionOptions = useMemo(
+    () => getOptions("stageSubsections", ["stage_id"]),
+    [dictionaries]
+  );
+
+  const subsectionOptions = useMemo(
+    () =>
+      stageSubsectionOptions.filter((item) =>
+        manual.stage_id?.value ? Number(item.stage_id) === Number(manual.stage_id.value) : false
+      ),
+    [stageSubsectionOptions, manual.stage_id]
+  );
+
   const toggleItem = (item) => {
     setSelected((prev) => {
       if (prev[item.id]) {
@@ -173,7 +194,7 @@ export default function MaterialRequestsCreate() {
           quantity: item.remaining > 0 ? item.remaining : 1,
           currency: item.currency,
           price: item.price,
-          item_type: 1,
+          item_type: Number(item.entry_type) === 2 ? 2 : 1,
           comment: ""
         }
       };
@@ -608,7 +629,7 @@ export default function MaterialRequestsCreate() {
 
             <Select
               styles={getSelectStyles(isDark)}
-              options={getOptions("blockStages")}
+              options={stageOptions}
               value={manual.stage_id}
               onChange={(value) =>
                 setManual((prev) => ({ ...prev, stage_id: value, subsection_id: null }))
@@ -619,7 +640,7 @@ export default function MaterialRequestsCreate() {
 
             <Select
               styles={getSelectStyles(isDark)}
-              options={getOptions("stageSubsections")}
+              options={subsectionOptions}
               value={manual.subsection_id}
               onChange={(value) =>
                 setManual((prev) => ({ ...prev, subsection_id: value }))

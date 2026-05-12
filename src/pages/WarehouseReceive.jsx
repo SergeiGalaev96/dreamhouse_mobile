@@ -375,11 +375,19 @@ export default function WarehouseReceive() {
       <button
         onClick={handleReceive}
         disabled={!Object.keys(selectedItems).length}
-        className="fixed bottom-16 left-6 right-6 rounded-lg bg-green-600 py-3 text-sm font-medium text-white hover:bg-green-500 disabled:opacity-50"
+        className="hidden fixed bottom-16 left-6 right-6 rounded-lg bg-green-600 py-3 text-sm font-medium text-white hover:bg-green-500 disabled:opacity-50"
       >
         Принять
       </button>
       </PullToRefresh>
+
+      <button
+        onClick={handleReceive}
+        disabled={!Object.keys(selectedItems).length}
+        className="fixed bottom-16 left-6 right-6 rounded-lg bg-green-600 py-3 text-sm font-medium text-white hover:bg-green-500 disabled:opacity-50"
+      >
+        Принять
+      </button>
     </div>
   );
 }

@@ -13,11 +13,13 @@ export default function PullToRefresh({
   const [pullDistance, setPullDistance] = useState(0);
 
   const touchStartYRef = useRef(0);
+  const touchStartXRef = useRef(0);
   const isPullingRef = useRef(false);
 
   const resetPull = () => {
     isPullingRef.current = false;
     touchStartYRef.current = 0;
+    touchStartXRef.current = 0;
     setPullDistance(0);
   };
 
@@ -26,21 +28,27 @@ export default function PullToRefresh({
     if (disabled || refreshing || (topOnly && scrollTop > 0)) return;
 
     touchStartYRef.current = e.touches[0].clientY;
+    touchStartXRef.current = e.touches[0].clientX;
     isPullingRef.current = true;
   };
 
   const handleTouchMove = (e) => {
     if (!isPullingRef.current) return;
 
-    const delta = e.touches[0].clientY - touchStartYRef.current;
+    const deltaY = e.touches[0].clientY - touchStartYRef.current;
+    const deltaX = e.touches[0].clientX - touchStartXRef.current;
 
-    if (delta <= 0) {
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      resetPull();
+      return;
+    }
+
+    if (deltaY <= 0) {
       setPullDistance(0);
       return;
     }
 
-    e.preventDefault();
-    setPullDistance(Math.min(72, delta * 0.4));
+    setPullDistance(Math.min(72, deltaY * 0.4));
   };
 
   const handleTouchEnd = async () => {

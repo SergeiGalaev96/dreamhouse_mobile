@@ -13,6 +13,18 @@ import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
 const PURCHASE_STATUS_EDITOR_ROLE_IDS = [1, 7, 10, 11];
 const PURCHASE_CREATE_ROLE_IDS = [1, 7, 10, 11];
 
+const formatMoney = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "0";
+
+  return new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2
+  }).format(amount);
+};
+
+const isSomCurrency = (currency) => ["KGS", "СОМ", "SOM"].includes(String(currency || "").trim().toUpperCase());
+
 export default function PurchaseOrdersList() {
   const { projectId, blockId } = useParams();
   const navigate = useNavigate();
@@ -25,6 +37,7 @@ export default function PurchaseOrdersList() {
   const [search, setSearch] = useState("");
   const [inputSearch, setInputSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [paymentsByOrderId, setPaymentsByOrderId] = useState({});
   const [dictionaries, setDictionaries] = useState({});
   const [tab, setTab] = useState("new");
 
@@ -63,9 +76,68 @@ export default function PurchaseOrdersList() {
     });
 
     if (res.success) {
-      setOrders(res.data || []);
+      const nextOrders = res.data || [];
+      setOrders(nextOrders);
       setPagination(res.pagination);
+      loadOrderPayments(nextOrders.map((order) => order.id));
     }
+  };
+
+  const loadOrderPayments = async (orderIds = [], { merge = false } = {}) => {
+    const ids = orderIds.map((id) => Number(id)).filter(Boolean);
+
+    if (!ids.length) {
+      if (!merge) setPaymentsByOrderId({});
+      return;
+    }
+
+    const payload = {
+      project_id: Number(projectId),
+      block_id: blockId ? Number(blockId) : null,
+      entity_type: "purchaseOrder",
+      page: 1,
+      size: 100
+    };
+
+    if (ids.length === 1) {
+      payload.entity_id = ids[0];
+    } else {
+      payload.entity_ids = ids;
+    }
+
+    const res = await postRequest("/payments/search", payload);
+
+    if (!res.success) {
+      if (!merge) setPaymentsByOrderId({});
+      return;
+    }
+
+    const grouped = (res.data || []).reduce((acc, payment) => {
+      const orderId = Number(payment.entity_id);
+      if (!orderId) return acc;
+      acc[orderId] = [...(acc[orderId] || []), payment];
+      return acc;
+    }, {});
+
+    setPaymentsByOrderId((prev) => {
+      if (!merge) return grouped;
+
+      const next = { ...prev };
+      ids.forEach((id) => {
+        next[id] = grouped[id] || [];
+      });
+      return next;
+    });
+  };
+
+  const toggleExpandedOrder = (orderId, expanded) => {
+    if (expanded) {
+      setExpandedId(null);
+      return;
+    }
+
+    setExpandedId(orderId);
+    loadOrderPayments([orderId], { merge: true });
   };
 
   const loadDicts = async () => {
@@ -168,11 +240,14 @@ export default function PurchaseOrdersList() {
       <PullToRefresh contentClassName="space-y-[2px]" onRefresh={loadOrders}>
         {orders.map((order) => {
           const expanded = expandedId === order.id;
-          const totalSum = order.items?.reduce((acc, item) => acc + (item.summ || 0), 0);
+          const totalSum = order.items?.reduce((acc, item) => acc + (Number(item.summ) || 0), 0);
+          const orderPayments = (paymentsByOrderId[order.id] || []).filter(
+            (payment) => payment.status_ref?.code === "paid" || Number(payment.status) === 3
+          );
 
           return (
             <div key={order.id} className={cardClass}>
-              <div onClick={() => setExpandedId(expanded ? null : order.id)} className="cursor-pointer">
+              <div onClick={() => toggleExpandedOrder(order.id, expanded)} className="cursor-pointer">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="text-sm">
                     {"\u0417\u0430\u044f\u0432\u043a\u0430 \u2116"}<span className="font-semibold">{order.id}</span>
@@ -186,7 +261,7 @@ export default function PurchaseOrdersList() {
                 </div>
 
                 <div className={`text-xs ${themeText.secondary(isDark)}`}>
-                  {"\u0421\u0443\u043c\u043c\u0430:"} <span className={isDark ? "font-medium text-white" : "font-medium text-black"}>{totalSum}</span>
+                  {"\u0421\u0443\u043c\u043c\u0430:"} <span className={isDark ? "font-medium text-white" : "font-medium text-black"}>{formatMoney(totalSum)}</span>
                 </div>
               </div>
 
@@ -195,7 +270,40 @@ export default function PurchaseOrdersList() {
                   expanded ? "mt-3 max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
                 }`}
               >
-                <div className={`space-y-2 border-t pt-3 ${isDark ? "border-gray-800" : "border-slate-200"}`}>
+                <div className={`space-y-3 border-t pt-3 ${isDark ? "border-gray-800" : "border-slate-200"}`}>
+                  <div className="text-xs">
+                    <div className={`mb-2 font-semibold ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                      Платежи по закупу
+                    </div>
+
+                    {orderPayments.length > 0 ? (
+                      <div className="space-y-1">
+                        {orderPayments.map((payment) => (
+                          <div
+                            key={payment.id}
+                            className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 ${isDark ? "bg-gray-800/70" : "bg-slate-100"}`}
+                          >
+                            <span className="min-w-0 truncate">
+                              {payment.title || `Платеж №${payment.id}`}
+                            </span>
+                            <span className="shrink-0 text-right font-medium text-green-500">
+                              {formatMoney(payment.amount)} {payment.currency || "KGS"}
+                              {!isSomCurrency(payment.currency) ? (
+                                <span className={`ml-1 font-normal ${isDark ? "text-gray-400" : "text-slate-500"}`}>
+                                  курс {payment.currency_rate || 1}
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className={`rounded-lg border border-dashed p-3 text-center ${isDark ? "border-gray-800 text-gray-500" : "border-slate-300 text-slate-500"}`}>
+                        Оплаченных платежей по этой заявке пока нет
+                      </div>
+                    )}
+                  </div>
+
                   {order.items?.map((item) => (
                     <div key={item.id} className={`${itemCardClass} relative`}>
                       <div className="flex items-start justify-between gap-3">

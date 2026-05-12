@@ -1,5 +1,5 @@
 ﻿import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ClipboardList, Download, Pencil, Plus, Search, X } from "lucide-react";
 import Select from "react-select";
 import toast from "react-hot-toast";
@@ -114,7 +114,8 @@ const saveNativeReport = async (blob, filename) => {
 };
 
 export default function Estimates() {
-  const { blockId } = useParams();
+  const { projectId, blockId } = useParams();
+  const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const { isDark } = useTheme();
 
@@ -156,6 +157,19 @@ export default function Estimates() {
   useEffect(() => {
     loadEstimate();
   }, [loadEstimate]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !projectId) return undefined;
+
+    window.history.pushState({ estimatesBackGuard: true }, "", window.location.href);
+
+    const handlePopState = () => {
+      navigate(`/projects/${projectId}`, { replace: true });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate, projectId]);
 
   useEffect(() => {
     const loadDicts = async () => {

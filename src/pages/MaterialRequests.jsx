@@ -247,7 +247,7 @@ export default function MaterialRequests() {
     if (isLast) {
       const materialEstimateId = await findEstimateByBlock();
 
-      for (const item of request.items.filter((current) => current.item_type === 2)) {
+      for (const item of request.items.filter((current) => current.item_type === 2 && !current.material_estimate_item_id)) {
         const createPayload = [
           {
             material_estimate_id: materialEstimateId,

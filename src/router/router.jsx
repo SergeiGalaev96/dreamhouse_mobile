@@ -15,6 +15,7 @@ const Projects = lazy(() => import("../pages/Projects"));
 const ProjectCard = lazy(() => import("../pages/ProjectCard"));
 const ProjectDocuments = lazy(() => import("../pages/ProjectDocuments"));
 const ProjectReports = lazy(() => import("../pages/ProjectReports"));
+const ProjectPayments = lazy(() => import("../pages/ProjectPayments"));
 const Users = lazy(() => import("../pages/Users"));
 const Suppliers = lazy(() => import("../pages/Suppliers"));
 const Contractors = lazy(() => import("../pages/Contractors"));
@@ -34,6 +35,10 @@ const MaterialWriteOffs = lazy(() => import("../pages/MaterialWriteOffs"));
 const PurchaseOrders = lazy(() => import("../pages/PurchaseOrders"));
 const PurchaseOrdersCreate = lazy(() => import("../pages/PurchaseOrdersCreate"));
 const SupplierPurchaseOrders = lazy(() => import("../pages/SupplierPurchaseOrders"));
+const SalesBlock = lazy(() => import("../pages/SalesBlock"));
+const ProjectSales = lazy(() => import("../pages/ProjectSales"));
+const SalesFloorPlan = lazy(() => import("../pages/SalesFloorPlan"));
+const SalesUnitDetails = lazy(() => import("../pages/SalesUnitDetails"));
 
 const ADMIN_ROLE_ID = 1;
 const SUPPLIER_MANAGER_ROLE_IDS = [ADMIN_ROLE_ID, 10, 11];
@@ -111,6 +116,12 @@ function MobileBackHandler({ user }) {
           return;
         }
 
+        const projectPaymentsMatch = location.pathname.match(/^\/projects\/(\d+)\/payments$/);
+        if (projectPaymentsMatch) {
+          navigate(`/projects/${projectPaymentsMatch[1]}`);
+          return;
+        }
+
         const materialRequestsCreateMatch = location.pathname.match(/^\/projects\/(\d+)\/blocks\/(\d+)\/material-requests\/create$/);
         if (materialRequestsCreateMatch) {
           navigate(`/projects/${materialRequestsCreateMatch[1]}/blocks/${materialRequestsCreateMatch[2]}/material-requests`);
@@ -123,9 +134,39 @@ function MobileBackHandler({ user }) {
           return;
         }
 
+        const estimatesMatch = location.pathname.match(/^\/projects\/(\d+)\/blocks\/(\d+)\/estimates$/);
+        if (estimatesMatch) {
+          navigate(`/projects/${estimatesMatch[1]}`);
+          return;
+        }
+
         const workPerformedCreateMatch = location.pathname.match(/^\/projects\/(\d+)\/blocks\/(\d+)\/work-performed\/create$/);
         if (workPerformedCreateMatch) {
           navigate(`/projects/${workPerformedCreateMatch[1]}/blocks/${workPerformedCreateMatch[2]}/work-performed`);
+          return;
+        }
+
+        const salesBlockMatch = location.pathname.match(/^\/projects\/(\d+)\/blocks\/(\d+)\/sales$/);
+        if (salesBlockMatch) {
+          navigate(`/projects/${salesBlockMatch[1]}`);
+          return;
+        }
+
+        const projectSalesMatch = location.pathname.match(/^\/projects\/(\d+)\/sales$/);
+        if (projectSalesMatch) {
+          navigate(`/projects/${projectSalesMatch[1]}`);
+          return;
+        }
+
+        const salesFloorPlanMatch = location.pathname.match(/^\/projects\/(\d+)\/sales\/blocks\/(\d+)\/floors\/(\d+)$/);
+        if (salesFloorPlanMatch) {
+          navigate(`/projects/${salesFloorPlanMatch[1]}/sales`);
+          return;
+        }
+
+        const salesUnitMatch = location.pathname.match(/^\/projects\/(\d+)\/sales\/blocks\/(\d+)\/floors\/(\d+)\/units\/(\d+)$/);
+        if (salesUnitMatch) {
+          navigate(`/projects/${salesUnitMatch[1]}/sales/blocks/${salesUnitMatch[2]}/floors/${salesUnitMatch[3]}`);
           return;
         }
 
@@ -191,8 +232,12 @@ export default function Router() {
 
           <Route path="/projects" element={withSuspense(<Projects />)} />
           <Route path="/projects/:projectId" element={withSuspense(<ProjectCard />)} />
+          <Route path="/projects/:projectId/sales" element={withSuspense(<ProjectSales />)} />
+          <Route path="/projects/:projectId/sales/blocks/:blockId/floors/:floorId" element={withSuspense(<SalesFloorPlan />)} />
+          <Route path="/projects/:projectId/sales/blocks/:blockId/floors/:floorId/units/:unitId" element={withSuspense(<SalesUnitDetails />)} />
           <Route path="/projects/:projectId/documents" element={withSuspense(<ProjectDocuments />)} />
           <Route path="/projects/:projectId/reports" element={withSuspense(<ProjectReports />)} />
+          <Route path="/projects/:projectId/payments" element={withSuspense(<ProjectPayments />)} />
           <Route path="/projects/:projectId/tasks" element={withSuspense(<Tasks />)} />
           <Route path="/notifications" element={withSuspense(<Notifications />)} />
 
@@ -240,6 +285,10 @@ export default function Router() {
           <Route
             path="/projects/:projectId/blocks/:blockId/work-performed"
             element={withSuspense(<WorkPerformed />)}
+          />
+          <Route
+            path="/projects/:projectId/blocks/:blockId/sales"
+            element={withSuspense(<SalesBlock />)}
           />
           <Route
             path="/projects/:projectId/blocks/:blockId/work-performed-create"

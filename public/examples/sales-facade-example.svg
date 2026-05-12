@@ -1,0 +1,78 @@
+<svg width="1200" height="760" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="600" y1="0" x2="600" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1E3A8A"/>
+    </linearGradient>
+    <linearGradient id="tower" x1="600" y1="110" x2="600" y2="650" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E2E8F0"/>
+      <stop offset="1" stop-color="#CBD5E1"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="760" rx="32" fill="url(#sky)"/>
+  <rect x="310" y="110" width="580" height="540" rx="18" fill="url(#tower)"/>
+  <rect x="505" y="110" width="190" height="540" rx="12" fill="#334155"/>
+  <rect x="290" y="630" width="620" height="30" rx="8" fill="#3F3F46"/>
+
+  <g opacity="0.9">
+    <rect x="355" y="150" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="430" y="150" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="715" y="150" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="790" y="150" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="540" y="150" width="40" height="48" rx="6" fill="#020617"/>
+    <rect x="618" y="150" width="40" height="48" rx="6" fill="#020617"/>
+
+    <rect x="355" y="220" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="430" y="220" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="715" y="220" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="790" y="220" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="540" y="220" width="40" height="48" rx="6" fill="#020617"/>
+    <rect x="618" y="220" width="40" height="48" rx="6" fill="#020617"/>
+
+    <rect x="355" y="290" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="430" y="290" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="715" y="290" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="790" y="290" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="540" y="290" width="40" height="48" rx="6" fill="#020617"/>
+    <rect x="618" y="290" width="40" height="48" rx="6" fill="#020617"/>
+
+    <rect x="355" y="360" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="430" y="360" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="715" y="360" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="790" y="360" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="540" y="360" width="40" height="48" rx="6" fill="#020617"/>
+    <rect x="618" y="360" width="40" height="48" rx="6" fill="#020617"/>
+
+    <rect x="355" y="430" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="430" y="430" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="715" y="430" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="790" y="430" width="55" height="48" rx="6" fill="#0F172A"/>
+    <rect x="540" y="430" width="40" height="48" rx="6" fill="#020617"/>
+    <rect x="618" y="430" width="40" height="48" rx="6" fill="#020617"/>
+  </g>
+
+  <g>
+    <rect id="FACADE-FLR-01" x="325" y="528" width="550" height="46" rx="10" fill="#22C55E" fill-opacity="0.25" stroke="#22C55E" stroke-width="3"/>
+    <text x="345" y="555" fill="white" font-size="18" font-family="Arial, sans-serif" font-weight="700">Этаж 1</text>
+    <text x="820" y="555" fill="#BBF7D0" font-size="18" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">Свободно: 4</text>
+
+    <rect id="FACADE-FLR-02" x="325" y="475" width="550" height="46" rx="10" fill="#F59E0B" fill-opacity="0.22" stroke="#F59E0B" stroke-width="3"/>
+    <text x="345" y="502" fill="white" font-size="18" font-family="Arial, sans-serif" font-weight="700">Этаж 2</text>
+    <text x="820" y="502" fill="#FDE68A" font-size="18" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">Бронь: 2</text>
+
+    <rect id="FACADE-FLR-03" x="325" y="422" width="550" height="46" rx="10" fill="#3B82F6" fill-opacity="0.20" stroke="#60A5FA" stroke-width="3"/>
+    <text x="345" y="449" fill="white" font-size="18" font-family="Arial, sans-serif" font-weight="700">Этаж 3</text>
+    <text x="820" y="449" fill="#BFDBFE" font-size="18" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">Шахматка / hover</text>
+
+    <rect id="FACADE-FLR-04" x="325" y="369" width="550" height="46" rx="10" fill="#EF4444" fill-opacity="0.22" stroke="#F87171" stroke-width="3"/>
+    <text x="345" y="396" fill="white" font-size="18" font-family="Arial, sans-serif" font-weight="700">Этаж 4</text>
+    <text x="820" y="396" fill="#FECACA" font-size="18" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">Продано: 3</text>
+  </g>
+
+  <rect x="38" y="38" width="322" height="106" rx="18" fill="#111827" fill-opacity="0.82"/>
+  <text x="62" y="76" fill="white" font-size="30" font-family="Arial, sans-serif" font-weight="700">Пример SVG фасада</text>
+  <text x="62" y="108" fill="#CBD5E1" font-size="18" font-family="Arial, sans-serif">
+    Выделенные полосы — это будущие кликабельные зоны этажей
+  </text>
+</svg>
