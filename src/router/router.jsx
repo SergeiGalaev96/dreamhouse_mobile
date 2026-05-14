@@ -36,6 +36,7 @@ const PurchaseOrders = lazy(() => import("../pages/PurchaseOrders"));
 const PurchaseOrdersCreate = lazy(() => import("../pages/PurchaseOrdersCreate"));
 const SupplierPurchaseOrders = lazy(() => import("../pages/SupplierPurchaseOrders"));
 const SalesBlock = lazy(() => import("../pages/SalesBlock"));
+const SalesManagement = lazy(() => import("../pages/SalesManagement"));
 const ProjectSales = lazy(() => import("../pages/ProjectSales"));
 const SalesFloorPlan = lazy(() => import("../pages/SalesFloorPlan"));
 const SalesUnitDetails = lazy(() => import("../pages/SalesUnitDetails"));
@@ -63,7 +64,7 @@ function MobileBackHandler({ user }) {
 
     return user.role_id === 13
       ? ["/dashboard", "/supplier-orders", "/profile", "/notifications"]
-      : ["/projects", "/dashboard", "/profile", "/notifications"];
+      : ["/projects", "/sales", "/dashboard", "/profile", "/notifications"];
   }, [user]);
 
   useEffect(() => {
@@ -231,6 +232,7 @@ export default function Router() {
           <Route path="/dashboard" element={withSuspense(<Dashboard />)} />
 
           <Route path="/projects" element={withSuspense(<Projects />)} />
+          <Route path="/sales" element={user?.role_id === 13 ? <Navigate to="/supplier-orders" replace /> : withSuspense(<SalesManagement />)} />
           <Route path="/projects/:projectId" element={withSuspense(<ProjectCard />)} />
           <Route path="/projects/:projectId/sales" element={withSuspense(<ProjectSales />)} />
           <Route path="/projects/:projectId/sales/blocks/:blockId/floors/:floorId" element={withSuspense(<SalesFloorPlan />)} />

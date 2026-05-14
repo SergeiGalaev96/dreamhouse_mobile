@@ -12,7 +12,8 @@ import {
   Wrench,
   Bell,
   Boxes,
-  Briefcase
+  Briefcase,
+  Building2
 } from "lucide-react";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AuthContext } from "../auth/AuthContext";
@@ -394,6 +395,19 @@ export default function MainLayout() {
             <User size={18} />
             Профиль
           </button>
+
+          {!isSupplier && (
+            <button
+              onClick={() => {
+                navigate("/sales");
+                setMenuOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded px-3 py-2 transition ${menuButtonClass}`}
+            >
+              <Building2 size={18} />
+              Отдел продаж
+            </button>
+          )}
 
           {isAdmin && (
             <button

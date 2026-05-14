@@ -1,10 +1,11 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Building2, Grid3X3, Phone, Pencil, Plus, Search, UserPlus, Users } from "lucide-react";
+import { Building2, Download, FileText, Grid3X3, KeyRound, ListChecks, Phone, Pencil, Plus, Search, Trash2, Upload, UserPlus, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import PullToRefresh from "../components/PullToRefresh";
 import { AuthContext } from "../auth/AuthContext";
-import { getRequest, postRequest, putRequest } from "../api/request";
+import api from "../api/axios";
+import { deleteRequest, getRequest, postRequest, putRequest } from "../api/request";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { useTheme } from "../context/ThemeContext";
 import { formatDateTime } from "../utils/date";
@@ -52,6 +53,17 @@ const EMPTY_CLIENT_FORM = {
   passport_number: "",
   pin: "",
   address: "",
+  comment: ""
+};
+
+const EMPTY_UNIT_CLIENT_FORM = {
+  client_id: "",
+  deal_type_id: "",
+  last_name: "",
+  first_name: "",
+  middle_name: "",
+  phone: "",
+  email: "",
   comment: ""
 };
 
@@ -165,13 +177,14 @@ export default function ProjectSales() {
   const { user } = useContext(AuthContext);
   const { isDark } = useTheme();
 
-  const [activeTab, setActiveTab] = useState("units");
+  const [activeTab, setActiveTab] = useState("management");
   const [project, setProject] = useState(null);
   const [overview, setOverview] = useState(null);
   const [dictionaries, setDictionaries] = useState({});
   const [unitStatuses, setUnitStatuses] = useState([]);
   const [leadStatuses, setLeadStatuses] = useState([]);
   const [leadSources, setLeadSources] = useState([]);
+  const [dealTypes, setDealTypes] = useState([]);
 
   const [selectedBlockId, setSelectedBlockId] = useState(null);
   const [selectedFloorId, setSelectedFloorId] = useState(null);
@@ -194,6 +207,9 @@ export default function ProjectSales() {
   const [clientModalOpen, setClientModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [clientForm, setClientForm] = useState(EMPTY_CLIENT_FORM);
+  const [unitClientModalOpen, setUnitClientModalOpen] = useState(false);
+  const [unitClientTarget, setUnitClientTarget] = useState(null);
+  const [unitClientForm, setUnitClientForm] = useState(EMPTY_UNIT_CLIENT_FORM);
 
   const [leadInputSearch, setLeadInputSearch] = useState("");
   const [leadSearch, setLeadSearch] = useState("");
@@ -207,6 +223,11 @@ export default function ProjectSales() {
   const [clientPage, setClientPage] = useState(1);
   const [clients, setClients] = useState([]);
   const [clientsPagination, setClientsPagination] = useState(null);
+  const [filesModalEntity, setFilesModalEntity] = useState(null);
+  const [filesDocumentId, setFilesDocumentId] = useState(null);
+  const [salesFiles, setSalesFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
 
   const pageClass = themeText.page(isDark);
   const titleClass = themeText.title(isDark);
@@ -254,6 +275,43 @@ export default function ProjectSales() {
     return counters;
   }, [floors, unitStatuses]);
 
+  const managementStats = useMemo(() => {
+    const result = {
+      totalArea: 0,
+      totalPrice: 0,
+      freePrice: 0,
+      reservedPrice: 0,
+      soldPrice: 0,
+      byType: {
+        apartment: 0,
+        commercial: 0,
+        parking: 0,
+        storage: 0
+      }
+    };
+
+    for (const floor of floors) {
+      for (const unit of floor.units || []) {
+        const statusCode = unitStatuses.find((item) => Number(item.id) === Number(unit.status_id))?.code;
+        const price = Number(unit.price_total || 0);
+        const area = Number(unit.area_total || 0);
+
+        result.totalPrice += Number.isFinite(price) ? price : 0;
+        result.totalArea += Number.isFinite(area) ? area : 0;
+
+        if (statusCode === "free") result.freePrice += price;
+        if (statusCode === "reserved") result.reservedPrice += price;
+        if (statusCode === "sold") result.soldPrice += price;
+
+        if (result.byType[unit.lot_type] !== undefined) {
+          result.byType[unit.lot_type] += 1;
+        }
+      }
+    }
+
+    return result;
+  }, [floors, unitStatuses]);
+
   useEffect(() => {
     loadInitial();
   }, [projectId]);
@@ -274,7 +332,7 @@ export default function ProjectSales() {
   }, [activeTab, leadPage, leadSearch, leadStatusFilter, selectedBlockId]);
 
   useEffect(() => {
-    if (activeTab === "clients") {
+    if (activeTab === "clients" || activeTab === "management") {
       loadClients();
     }
   }, [activeTab, clientPage, clientSearch, selectedBlockId]);
@@ -282,11 +340,12 @@ export default function ProjectSales() {
   const loadInitial = async () => {
     try {
       setLoading(true);
-      const [projectRes, unitStatusesRes, leadStatusesRes, leadSourcesRes, dicts] = await Promise.all([
+      const [projectRes, unitStatusesRes, leadStatusesRes, leadSourcesRes, dealTypesRes, dicts] = await Promise.all([
         getRequest(`/projects/getById/${projectId}`),
         getRequest("/sales/unit-statuses"),
         getRequest("/sales/lead-statuses"),
         getRequest("/sales/lead-sources"),
+        getRequest("/sales/deal-types"),
         loadDictionaries(["users", "projectBlocks"])
       ]);
 
@@ -301,6 +360,7 @@ export default function ProjectSales() {
       const nextLeadStatuses = leadStatusesRes?.success ? leadStatusesRes.data || [] : [];
       setLeadStatuses(nextLeadStatuses);
       setLeadSources(leadSourcesRes?.success ? leadSourcesRes.data || [] : []);
+      setDealTypes(dealTypesRes?.success ? dealTypesRes.data || [] : []);
       setDictionaries(nextDicts);
       setSelectedBlockId((prev) => prev || blocks[0]?.id || null);
       setLeadStatusFilter((prev) => prev || (nextLeadStatuses[0]?.id ? String(nextLeadStatuses[0].id) : ""));
@@ -407,6 +467,20 @@ export default function ProjectSales() {
     return `${Number(value).toLocaleString("ru-RU")} ${currency}`;
   };
 
+  const formatArea = (value) => {
+    if (value === null || value === undefined || value === "") return "—";
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "—";
+    return `${num.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} м²`;
+  };
+
+  const getLotTypeLabel = (type) => ({
+    apartment: "Квартира",
+    commercial: "Помещение",
+    parking: "Паркинг",
+    storage: "Кладовая"
+  }[type] || "Лот");
+
   const getUserName = (userId) =>
     dictionaries.users?.find((item) => Number(item.id) === Number(userId))?.label || "—";
 
@@ -414,6 +488,64 @@ export default function ProjectSales() {
   const getLeadSource = (sourceId) => leadSources.find((item) => Number(item.id) === Number(sourceId));
   const defaultLeadStatusId = leadStatuses[0]?.id ? String(leadStatuses[0].id) : "";
   const getUnitStatus = (statusId) => unitStatuses.find((item) => Number(item.id) === Number(statusId));
+  const getUnitStatusByCode = (code) => unitStatuses.find((item) => item.code === code);
+  const getDealType = (dealTypeId) => dealTypes.find((item) => Number(item.id) === Number(dealTypeId));
+
+  const getUnitStatusCodeForDealType = (dealType) => {
+    const code = dealType?.code;
+    if (!code) return null;
+    if (code === "free") return "free";
+    if (code === "reservation" || code === "reservation_hadiya" || code === "reservation_barter" || code === "deposit") {
+      return "reserved";
+    }
+    if (["regular", "barter", "land_barter", "exchange", "hadiya"].includes(code)) {
+      return "sold";
+    }
+    return null;
+  };
+
+  const updateUnitStatus = async (unit, statusCode, options = {}) => {
+    const status = getUnitStatusByCode(statusCode);
+    if (!status) {
+      toast.error("Статус лота не найден");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const payload = {
+        project_id: Number(projectId),
+        block_id: Number(unit.block_id || selectedBlockId),
+        floor_id: Number(unit.floor_id),
+        unit_number: unit.unit_number,
+        lot_type: unit.lot_type,
+        rooms: unit.rooms === null || unit.rooms === undefined ? null : Number(unit.rooms),
+        area_total: unit.area_total === null || unit.area_total === undefined ? null : Number(unit.area_total),
+        price_total: unit.price_total === null || unit.price_total === undefined ? null : Number(unit.price_total),
+        currency: unit.currency || "KGS",
+        status_id: Number(status.id),
+        plan_code: unit.plan_code || null,
+        external_code: unit.external_code || null,
+        description: unit.description || null
+      };
+
+      const res = await putRequest(`/sales/units/update/${unit.id}`, payload);
+      if (!res?.success) {
+        toast.error(res?.message || "Не удалось изменить статус лота");
+        return;
+      }
+
+      if (!options.silent) {
+        toast.success(statusCode === "reserved" ? "Лот забронирован" : statusCode === "sold" ? "Лот выкуплен" : "Статус обновлен");
+      }
+      await loadOverview(selectedBlockId);
+    } catch (error) {
+      console.error("ProjectSales unit status error", error);
+      toast.error(error?.response?.data?.message || "Ошибка изменения статуса лота");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const openCreateFloor = () => {
     if (!selectedBlockId) return toast.error("Сначала выберите блок");
@@ -532,6 +664,23 @@ export default function ProjectSales() {
     setEditingClient(null);
     setClientForm(EMPTY_CLIENT_FORM);
     setClientModalOpen(false);
+  };
+
+  const openUnitClientModal = (unit) => {
+    const defaultDealType = dealTypes.find((item) => item.code === "reservation") || dealTypes[0];
+    setUnitClientTarget(unit);
+    setUnitClientForm({
+      ...EMPTY_UNIT_CLIENT_FORM,
+      deal_type_id: defaultDealType?.id ? String(defaultDealType.id) : "",
+      comment: `Интерес к ${getLotTypeLabel(unit.lot_type).toLowerCase()} №${unit.unit_number}`
+    });
+    setUnitClientModalOpen(true);
+  };
+
+  const closeUnitClientModal = () => {
+    setUnitClientTarget(null);
+    setUnitClientForm(EMPTY_UNIT_CLIENT_FORM);
+    setUnitClientModalOpen(false);
   };
 
   const saveFloor = async (e) => {
@@ -695,6 +844,86 @@ export default function ProjectSales() {
     }
   };
 
+  const saveUnitClient = async (e) => {
+    e.preventDefault();
+    if (!unitClientTarget) return;
+
+    const existingClient = clients.find((item) => Number(item.id) === Number(unitClientForm.client_id));
+    if (!existingClient && !unitClientForm.first_name.trim() && !unitClientForm.last_name.trim()) {
+      toast.error("Выберите клиента или введите имя нового");
+      return;
+    }
+
+    const selectedDealType = getDealType(unitClientForm.deal_type_id);
+
+    try {
+      setSaving(true);
+      let client = existingClient;
+
+      if (!client) {
+        const clientRes = await postRequest("/sales/clients/create", {
+          last_name: unitClientForm.last_name.trim() || null,
+          first_name: unitClientForm.first_name.trim() || null,
+          middle_name: unitClientForm.middle_name.trim() || null,
+          phone: unitClientForm.phone.trim() || null,
+          email: unitClientForm.email.trim() || null,
+          comment: unitClientForm.comment.trim() || null
+        });
+
+        if (!clientRes?.success) {
+          toast.error(clientRes?.message || "Не удалось создать клиента");
+          return;
+        }
+
+        client = clientRes.data;
+      }
+
+      const clientName =
+        client.full_name ||
+        [client.last_name, client.first_name, client.middle_name].filter(Boolean).join(" ") ||
+        "Клиент";
+      const defaultComment = `Клиент привязан к лоту №${unitClientTarget.unit_number}`;
+      const leadComment = [
+        selectedDealType ? `Тип сделки: ${selectedDealType.name}` : "",
+        unitClientForm.comment.trim()
+      ].filter(Boolean).join("\n") || defaultComment;
+
+      const leadRes = await postRequest("/sales/leads/create", {
+        project_id: Number(projectId),
+        block_id: selectedBlockId ? Number(selectedBlockId) : null,
+        unit_id: Number(unitClientTarget.id),
+        client_id: Number(client.id),
+        full_name: clientName,
+        phone: client.phone || unitClientForm.phone.trim() || null,
+        email: client.email || unitClientForm.email.trim() || null,
+        status_id: defaultLeadStatusId ? Number(defaultLeadStatusId) : undefined,
+        comment: leadComment,
+        interest_rooms: unitClientTarget.rooms === null || unitClientTarget.rooms === undefined ? null : Number(unitClientTarget.rooms),
+        interest_budget_from: unitClientTarget.price_total === null || unitClientTarget.price_total === undefined ? null : Number(unitClientTarget.price_total),
+        interest_budget_to: unitClientTarget.price_total === null || unitClientTarget.price_total === undefined ? null : Number(unitClientTarget.price_total)
+      });
+
+      if (!leadRes?.success) {
+        toast.error(leadRes?.message || "Не удалось привязать клиента к лоту");
+        return;
+      }
+
+      const nextStatusCode = getUnitStatusCodeForDealType(selectedDealType);
+      if (nextStatusCode) {
+        await updateUnitStatus(unitClientTarget, nextStatusCode, { silent: true });
+      }
+
+      toast.success("Клиент добавлен к лоту");
+      closeUnitClientModal();
+      await Promise.all([loadClients(), loadLeads()]);
+    } catch (error) {
+      console.error("ProjectSales unit client save error", error);
+      toast.error(error?.response?.data?.message || "Ошибка привязки клиента");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const claimLead = async (leadId) => {
     try {
       const res = await postRequest(`/sales/leads/claim/${leadId}`, {});
@@ -740,6 +969,180 @@ export default function ProjectSales() {
     }
   };
 
+  const getSalesFilesMeta = (kind, entity) => {
+    if (kind === "lead") {
+      return {
+        entityType: "salesLead",
+        title: "Файлы лида",
+        name: entity?.full_name || `Лид #${entity?.id || ""}`,
+        documentName: `Файлы лида №${entity?.id || ""}`
+      };
+    }
+
+    const clientName =
+      entity?.full_name ||
+      [entity?.last_name, entity?.first_name, entity?.middle_name].filter(Boolean).join(" ") ||
+      `Клиент #${entity?.id || ""}`;
+
+    return {
+      entityType: "salesClient",
+      title: "Файлы клиента",
+      name: clientName,
+      documentName: `Файлы клиента №${entity?.id || ""}`
+    };
+  };
+
+  const loadSalesFiles = async (kind, entityId) => {
+    if (!kind || !entityId) return;
+
+    const meta = getSalesFilesMeta(kind, { id: entityId });
+
+    try {
+      setLoadingFiles(true);
+
+      const docs = await postRequest("/documents/search", {
+        entity_type: meta.entityType,
+        entity_id: Number(entityId),
+        page: 1,
+        size: 1
+      });
+
+      if (!docs?.success) {
+        toast.error(docs?.message || "Не удалось загрузить документы");
+        setFilesDocumentId(null);
+        setSalesFiles([]);
+        return;
+      }
+
+      const documentId = docs.data?.[0]?.id || null;
+      setFilesDocumentId(documentId);
+
+      if (!documentId) {
+        setSalesFiles([]);
+        return;
+      }
+
+      const files = await getRequest(`/documentFiles/files/${documentId}`);
+      setSalesFiles(files?.success ? files.data || [] : []);
+    } catch (error) {
+      console.error("ProjectSales loadSalesFiles error", error);
+      toast.error(error?.response?.data?.message || "Ошибка загрузки файлов");
+      setSalesFiles([]);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const ensureSalesDocument = async () => {
+    if (filesDocumentId) return filesDocumentId;
+    if (!filesModalEntity?.kind || !filesModalEntity?.entity?.id) {
+      throw new Error("Не выбрана сущность для файлов");
+    }
+
+    const { kind, entity } = filesModalEntity;
+    const meta = getSalesFilesMeta(kind, entity);
+
+    const docs = await postRequest("/documents/search", {
+      entity_type: meta.entityType,
+      entity_id: Number(entity.id),
+      page: 1,
+      size: 1
+    });
+
+    if (docs?.success && docs.data?.[0]?.id) {
+      setFilesDocumentId(docs.data[0].id);
+      return docs.data[0].id;
+    }
+
+    const created = await postRequest("/documents/create", {
+      entity_type: meta.entityType,
+      entity_id: Number(entity.id),
+      name: meta.documentName,
+      description: meta.name,
+      status: 1
+    });
+
+    if (!created?.success) {
+      throw new Error(created?.message || "Не удалось создать документ");
+    }
+
+    setFilesDocumentId(created.data.id);
+    return created.data.id;
+  };
+
+  const openSalesFiles = async (kind, entity) => {
+    setFilesModalEntity({ kind, entity });
+    setFilesDocumentId(null);
+    setSalesFiles([]);
+    await loadSalesFiles(kind, entity.id);
+  };
+
+  const closeSalesFiles = () => {
+    setFilesModalEntity(null);
+    setFilesDocumentId(null);
+    setSalesFiles([]);
+  };
+
+  const handleUploadSalesFiles = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length || !filesModalEntity) return;
+
+    try {
+      setUploadingFiles(true);
+      const documentId = await ensureSalesDocument();
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+
+      const res = await postRequest(`/documentFiles/upload/${documentId}`, formData);
+      if (!res?.success) {
+        throw new Error(res?.message || "Не удалось загрузить файлы");
+      }
+
+      toast.success("Файлы загружены");
+      await loadSalesFiles(filesModalEntity.kind, filesModalEntity.entity.id);
+    } catch (error) {
+      console.error("ProjectSales uploadSalesFiles error", error);
+      toast.error(error?.response?.data?.message || error?.message || "Ошибка загрузки файлов");
+    } finally {
+      setUploadingFiles(false);
+      event.target.value = null;
+    }
+  };
+
+  const handleDeleteSalesFile = async (fileId) => {
+    if (!window.confirm("Удалить файл?")) return;
+
+    try {
+      const res = await deleteRequest(`/documentFiles/${fileId}`);
+      if (!res?.success) {
+        throw new Error(res?.message || "Не удалось удалить файл");
+      }
+
+      toast.success("Файл удален");
+      await loadSalesFiles(filesModalEntity.kind, filesModalEntity.entity.id);
+    } catch (error) {
+      console.error("ProjectSales deleteSalesFile error", error);
+      toast.error(error?.response?.data?.message || error?.message || "Ошибка удаления файла");
+    }
+  };
+
+  const handleDownloadSalesFile = async (file) => {
+    try {
+      const res = await api.get(`/documentFiles/download/${file.id}`, { responseType: "blob" });
+      const objectUrl = URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = file.name || `sales-file-${file.id}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error("ProjectSales downloadSalesFile error", error);
+      toast.error("Не удалось скачать файл");
+    }
+  };
+
   const getFloorCounters = (floor) => {
     const counters = { free: 0, reserved: 0, sold: 0, offmarket: 0 };
     for (const unit of floor?.units || []) {
@@ -757,6 +1160,7 @@ export default function ProjectSales() {
   };
 
   const tabs = [
+    { id: "management", label: "Управление", icon: ListChecks },
     { id: "units", label: "Шахматка", icon: Grid3X3 },
     { id: "leads", label: "Лиды", icon: UserPlus },
     { id: "clients", label: "Клиенты", icon: Users }
@@ -776,7 +1180,7 @@ export default function ProjectSales() {
         </div>
 
         <div className={`${panelClass} mb-4 space-y-3`}>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -809,6 +1213,205 @@ export default function ProjectSales() {
             ))}
           </select>
         </div>
+
+        {activeTab === "management" && (
+          <>
+            <div className={`${panelClass} mb-4 space-y-3`}>
+              <div className="grid grid-cols-4 gap-2 text-sm">
+                <div className={`${cardClass} p-2`}>
+                  <div className={`text-xs ${mutedTextClass}`}>Этажей</div>
+                  <div className="mt-1 font-semibold">{floors.length}</div>
+                </div>
+                <div className={`${cardClass} p-2`}>
+                  <div className={`text-xs ${mutedTextClass}`}>Лотов</div>
+                  <div className="mt-1 font-semibold">{summary.total}</div>
+                </div>
+                <div className={`${cardClass} p-2`}>
+                  <div className={`text-xs ${mutedTextClass}`}>Площадь</div>
+                  <div className="mt-1 font-semibold">{formatArea(managementStats.totalArea)}</div>
+                </div>
+                <div className={`${cardClass} p-2`}>
+                  <div className={`text-xs ${mutedTextClass}`}>Фонд</div>
+                  <div className="mt-1 truncate font-semibold">{formatMoney(managementStats.totalPrice)}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div className={`${cardClass} p-3`}>
+                  <div className={`text-xs ${mutedTextClass}`}>Свободно</div>
+                  <div className="mt-1 text-lg font-semibold text-green-400">{summary.free}</div>
+                  <div className={`truncate text-[11px] ${secondaryTextClass}`}>{formatMoney(managementStats.freePrice)}</div>
+                </div>
+                <div className={`${cardClass} p-3`}>
+                  <div className={`text-xs ${mutedTextClass}`}>Бронь</div>
+                  <div className="mt-1 text-lg font-semibold text-yellow-300">{summary.reserved}</div>
+                  <div className={`truncate text-[11px] ${secondaryTextClass}`}>{formatMoney(managementStats.reservedPrice)}</div>
+                </div>
+                <div className={`${cardClass} p-3`}>
+                  <div className={`text-xs ${mutedTextClass}`}>Выкуп</div>
+                  <div className="mt-1 text-lg font-semibold text-red-400">{summary.sold}</div>
+                  <div className={`truncate text-[11px] ${secondaryTextClass}`}>{formatMoney(managementStats.soldPrice)}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 text-xs">
+                <div className={`${cardClass} p-2`}>Квартир: <b>{managementStats.byType.apartment}</b></div>
+                <div className={`${cardClass} p-2`}>Помещ.: <b>{managementStats.byType.commercial}</b></div>
+                <div className={`${cardClass} p-2`}>Паркинг: <b>{managementStats.byType.parking}</b></div>
+                <div className={`${cardClass} p-2`}>Клад.: <b>{managementStats.byType.storage}</b></div>
+              </div>
+            </div>
+
+            <div className={`${panelClass} mb-4 space-y-3`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className={`text-sm font-semibold ${titleClass}`}>Блок и этажи</div>
+                  <div className={`text-xs ${secondaryTextClass}`}>Выберите этаж для управления лотами</div>
+                </div>
+                {canManageCatalog && (
+                  <button onClick={openCreateFloor} className="rounded-lg bg-blue-600 px-3 py-2 text-xs text-white">
+                    <div className="flex items-center gap-1">
+                      <Plus size={14} />
+                      <span>Этаж</span>
+                    </div>
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {floors.map((floor) => {
+                  const counters = getFloorCounters(floor);
+                  const isSelected = Number(selectedFloorId) === Number(floor.id);
+
+                  return (
+                    <button
+                      key={floor.id}
+                      onClick={() => setSelectedFloorId(floor.id)}
+                      className={`w-full rounded-xl border p-3 text-left transition ${
+                        isSelected ? "border-blue-500 bg-blue-600/15" : "border-gray-800 bg-gray-900 hover:border-gray-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{floor.floor_number} этаж</div>
+                          <div className={`text-xs ${secondaryTextClass}`}>Лотов: {(floor.units || []).length}</div>
+                        </div>
+                        <div className="flex gap-2 text-xs">
+                          <span className="rounded-full bg-green-500/10 px-2 py-1 text-green-300">{counters.free}</span>
+                          <span className="rounded-full bg-yellow-500/10 px-2 py-1 text-yellow-300">{counters.reserved}</span>
+                          <span className="rounded-full bg-red-500/10 px-2 py-1 text-red-300">{counters.sold}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!floors.length && !loading && (
+                <div className={`rounded-xl border border-dashed border-gray-700 p-4 text-center text-sm ${secondaryTextClass}`}>
+                  Для этого блока пока нет этажей. Добавьте первый этаж.
+                </div>
+              )}
+            </div>
+
+            {selectedFloor && (
+              <div className={`${panelClass} mb-4 space-y-3`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-base font-semibold">Этаж {selectedFloor.floor_number}</div>
+                    <div className={`text-xs ${secondaryTextClass}`}>Управление квартирами и лотами этажа</div>
+                  </div>
+                  <div className="flex gap-2">
+                    {canManageCatalog && (
+                      <button onClick={openCreateUnit} className="rounded-lg bg-green-600 px-3 py-2 text-xs text-white">
+                        <div className="flex items-center gap-1">
+                          <Plus size={14} />
+                          <span>Лот</span>
+                        </div>
+                      </button>
+                    )}
+                    <button onClick={() => openFloorPlan(selectedFloor)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs text-white">
+                      План
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {selectedUnits.map((unit) => {
+                    const status = getUnitStatus(unit.status_id);
+                    const statusCode = status?.code || "";
+                    const statusClass =
+                      statusCode === "free" ? "border-green-500/40 bg-green-500/10 text-green-300" :
+                      statusCode === "reserved" ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-300" :
+                      statusCode === "sold" ? "border-red-500/40 bg-red-500/10 text-red-300" :
+                      "border-gray-700 text-gray-300";
+
+                    return (
+                      <div key={unit.id} className={`${cardClass} p-3`}>
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold">{getLotTypeLabel(unit.lot_type)} №{unit.unit_number}</span>
+                              <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClass}`}>{status?.name || "Без статуса"}</span>
+                            </div>
+                            <div className={`mt-1 text-xs ${secondaryTextClass}`}>
+                              {formatArea(unit.area_total)} · {unit.rooms ?? "—"} ком · {formatMoney(unit.price_total, unit.currency)}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => navigate(`/projects/${projectId}/sales/blocks/${selectedBlockId}/floors/${selectedFloor.id}/units/${unit.id}`)}
+                            className={actionTileClass}
+                            title="Открыть"
+                          >
+                            <Building2 size={14} />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => updateUnitStatus(unit, "reserved")}
+                            disabled={saving || statusCode === "reserved"}
+                            className="rounded-lg bg-yellow-500 px-3 py-2 text-xs font-semibold text-gray-950 disabled:opacity-50"
+                          >
+                            Бронь
+                          </button>
+                          <button
+                            onClick={() => updateUnitStatus(unit, "sold")}
+                            disabled={saving || statusCode === "sold"}
+                            className="rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                          >
+                            Выкуп
+                          </button>
+                          <button
+                            onClick={() => openUnitClientModal(unit)}
+                            className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white"
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <KeyRound size={13} />
+                              Клиент
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => openEditUnit(unit)}
+                            className="rounded-lg bg-gray-800 px-3 py-2 text-xs font-semibold text-white"
+                          >
+                            Изменить
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {!selectedUnits.length && (
+                  <div className={`rounded-xl border border-dashed border-gray-700 p-4 text-center text-sm ${secondaryTextClass}`}>
+                    На выбранном этаже пока нет лотов. Добавьте квартиру, помещение или паркинг.
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
 
         {activeTab === "units" && (
           <>
@@ -1021,6 +1624,9 @@ export default function ProjectSales() {
                       </div>
 
                       <div className="flex flex-col gap-2">
+                        <button onClick={() => openSalesFiles("lead", lead)} className={actionTileClass} title="Файлы">
+                          <FileText size={14} />
+                        </button>
                         {!isLockedByOther && (
                           <button onClick={() => openEditLead(lead)} className={actionTileClass}>
                             <Pencil size={14} />
@@ -1129,6 +1735,9 @@ export default function ProjectSales() {
                       </div>
 
                       <div className="flex flex-col gap-2">
+                        <button onClick={() => openSalesFiles("client", client)} className={actionTileClass} title="Файлы">
+                          <FileText size={14} />
+                        </button>
                         {!isLockedByOther && (
                           <button onClick={() => openEditClient(client)} className={actionTileClass}>
                             <Pencil size={14} />
@@ -1169,6 +1778,168 @@ export default function ProjectSales() {
           </>
         )}
       </PullToRefresh>
+
+      {filesModalEntity ? (() => {
+        const meta = getSalesFilesMeta(filesModalEntity.kind, filesModalEntity.entity);
+
+        return (
+          <Modal title={meta.title} subtitle={meta.name} onClose={closeSalesFiles}>
+            <div className="space-y-4">
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-500">
+                <Upload size={16} />
+                <span>{uploadingFiles ? "Загрузка..." : "Загрузить файлы"}</span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  disabled={uploadingFiles}
+                  onChange={handleUploadSalesFiles}
+                />
+              </label>
+
+              <div className="space-y-[6px]">
+                {loadingFiles ? (
+                  <div className="rounded-xl border border-dashed border-gray-700 px-4 py-6 text-center text-sm text-gray-400">
+                    Загружаем файлы...
+                  </div>
+                ) : salesFiles.length ? (
+                  salesFiles.map((file) => (
+                    <div key={file.id} className="rounded-xl border border-gray-800 bg-gray-950/40 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-white">{file.name}</div>
+                          <div className="mt-1 text-xs text-gray-400">{file.mime_type || "файл"}</div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadSalesFile(file)}
+                            className="rounded-lg bg-gray-800 p-2 text-white hover:bg-gray-700"
+                            title="Скачать"
+                          >
+                            <Download size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSalesFile(file.id)}
+                            className="rounded-lg bg-red-600 p-2 text-white hover:bg-red-500"
+                            title="Удалить"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-700 px-4 py-6 text-center text-sm text-gray-400">
+                    Файлы пока не прикреплены
+                  </div>
+                )}
+              </div>
+            </div>
+          </Modal>
+        );
+      })() : null}
+
+      {unitClientModalOpen && unitClientTarget && (
+        <Modal
+          title="Клиент на квартиру"
+          subtitle={`${getLotTypeLabel(unitClientTarget.lot_type)} №${unitClientTarget.unit_number}`}
+          onClose={closeUnitClientModal}
+        >
+          <form onSubmit={saveUnitClient} className="space-y-3">
+            <Field label="Существующий клиент">
+              <select
+                value={unitClientForm.client_id}
+                onChange={(e) => setUnitClientForm((prev) => ({ ...prev, client_id: e.target.value }))}
+                className={modalInputClass}
+              >
+                <option value="">Создать нового / не выбран</option>
+                {clients.map((client) => {
+                  const name = client.full_name || [client.last_name, client.first_name, client.middle_name].filter(Boolean).join(" ") || `Клиент №${client.id}`;
+                  return (
+                    <option key={client.id} value={client.id}>
+                      {name}
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+
+            <Field label="Тип сделки">
+              <select
+                value={unitClientForm.deal_type_id}
+                onChange={(e) => setUnitClientForm((prev) => ({ ...prev, deal_type_id: e.target.value }))}
+                className={modalInputClass}
+              >
+                <option value="">Не выбран</option>
+                {dealTypes.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {!unitClientForm.client_id && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Фамилия">
+                    <input
+                      value={unitClientForm.last_name}
+                      onChange={(e) => setUnitClientForm((prev) => ({ ...prev, last_name: e.target.value }))}
+                      className={modalInputClass}
+                    />
+                  </Field>
+                  <Field label="Имя">
+                    <input
+                      value={unitClientForm.first_name}
+                      onChange={(e) => setUnitClientForm((prev) => ({ ...prev, first_name: e.target.value }))}
+                      className={modalInputClass}
+                    />
+                  </Field>
+                </div>
+                <Field label="Отчество">
+                  <input
+                    value={unitClientForm.middle_name}
+                    onChange={(e) => setUnitClientForm((prev) => ({ ...prev, middle_name: e.target.value }))}
+                    className={modalInputClass}
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Телефон">
+                    <input
+                      value={unitClientForm.phone}
+                      onChange={(e) => setUnitClientForm((prev) => ({ ...prev, phone: e.target.value }))}
+                      className={modalInputClass}
+                    />
+                  </Field>
+                  <Field label="Email">
+                    <input
+                      value={unitClientForm.email}
+                      onChange={(e) => setUnitClientForm((prev) => ({ ...prev, email: e.target.value }))}
+                      className={modalInputClass}
+                    />
+                  </Field>
+                </div>
+              </>
+            )}
+
+            <Field label="Комментарий">
+              <textarea
+                value={unitClientForm.comment}
+                onChange={(e) => setUnitClientForm((prev) => ({ ...prev, comment: e.target.value }))}
+                className={`${modalInputClass} min-h-[84px]`}
+              />
+            </Field>
+
+            <button disabled={saving} className="w-full rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white disabled:opacity-60">
+              {saving ? "Сохранение..." : "Добавить клиента к лоту"}
+            </button>
+          </form>
+        </Modal>
+      )}
 
       {floorModalOpen && (
         <Modal title={editingFloor ? "Редактировать этаж" : "Новый этаж"} subtitle={selectedBlock?.label || ""} onClose={closeFloorModal}>

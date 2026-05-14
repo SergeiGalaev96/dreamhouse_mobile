@@ -408,6 +408,10 @@ export default function ProjectCard() {
   const getProgressPercentUI = (percent) => Math.min(Math.max(Number(percent) || 0, 0), 100);
 
   const formatMoney = (value) => (!value ? "0" : Number(value).toLocaleString("ru-RU"));
+  const getFinanceValue = (field) => {
+    const value = Number(project?.[field] || 0);
+    return Number.isFinite(value) ? value : 0;
+  };
   const formatPercent = (value) => {
     const num = Number(value || 0);
     if (!Number.isFinite(num)) return "0";
@@ -625,6 +629,23 @@ export default function ProjectCard() {
               </div>
               <div className={`h-2 w-full rounded ${trackClass} select-none`}>
                 <div className={`${getProgressColor(project.progress_percent)} h-full`} style={{ width: `${getProgressPercentUI(project.progress_percent)}%` }} />
+              </div>
+            </div>
+          </div>
+
+          <div className={`grid grid-cols-3 gap-2 rounded-xl border p-2 text-xs select-none ${isDark ? "border-gray-800 bg-gray-950/30" : "border-slate-200 bg-slate-50"}`}>
+            <div>
+              <div className={mutedTextClass}>Доход</div>
+              <div className="mt-1 font-semibold text-green-500">{formatMoney(getFinanceValue("paid_income"))}</div>
+            </div>
+            <div>
+              <div className={mutedTextClass}>Расход</div>
+              <div className="mt-1 font-semibold text-red-500">{formatMoney(getFinanceValue("paid_expense"))}</div>
+            </div>
+            <div className="text-right">
+              <div className={mutedTextClass}>Баланс</div>
+              <div className={`mt-1 font-semibold ${getFinanceValue("cash_balance") < 0 ? "text-red-500" : "text-blue-400"}`}>
+                {formatMoney(getFinanceValue("cash_balance"))}
               </div>
             </div>
           </div>

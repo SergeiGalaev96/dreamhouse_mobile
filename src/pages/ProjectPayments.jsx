@@ -1,13 +1,16 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Download, FileText, Image as ImageIcon, Pencil, Plus, Search, Trash2, Upload, Wallet } from "lucide-react";
 import toast from "react-hot-toast";
 import { FileIcon, defaultStyles } from "react-file-icon";
 import { useNavigate, useParams } from "react-router-dom";
-import { baseURL } from "../api/axios";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { baseURL, reportsFallbackURLs } from "../api/axios";
 import { deleteRequest, getRequest, postRequest, putRequest } from "../api/request";
 import { AuthContext } from "../auth/AuthContext";
 import PullToRefresh from "../components/PullToRefresh";
 import { useTheme } from "../context/ThemeContext";
+import { getAuthToken } from "../utils/authStorage";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { formatDate, formatDateReverse, formatDateTime } from "../utils/date";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
@@ -24,7 +27,7 @@ const EMPTY_PAYMENT_FORM = {
   entity_id: "",
   title: "",
   amount: "",
-  currency: "KGS",
+  currency: "",
   currency_rate: "1",
   planned_date: "",
   paid_date: "",
@@ -43,8 +46,7 @@ const EMPTY_PAYMENT_FORM = {
 const QUICK_FILTERS = [
   { key: "expense", label: "Расход" },
   { key: "income", label: "Доход" },
-  { key: "planned", label: "План" },
-  { key: "paid", label: "Факт" }
+  { key: "all", label: "Все" }
 ];
 
 const ENTITY_OPTIONS = [
@@ -60,15 +62,6 @@ const COUNTERPARTY_TYPE_OPTIONS = [
   { value: "contractor", label: "Подрядчик" },
   { value: "employee", label: "Сотрудник" },
   { value: "other", label: "Другое" }
-];
-
-const PAYMENT_METHOD_OPTIONS = [
-  { value: "", label: "Не выбран" },
-  { value: "cash", label: "Наличные" },
-  { value: "bank", label: "Банк" },
-  { value: "transfer", label: "Перевод" },
-  { value: "card", label: "Карта" },
-  { value: "mixed", label: "Смешанный" }
 ];
 
 const ACCOUNT_TYPE_OPTIONS = [
@@ -90,6 +83,13 @@ const formatMoney = (value) => {
 };
 
 const isSomCurrency = (currency) => ["KGS", "СОМ", "SOM"].includes(String(currency || "").trim().toUpperCase());
+const isSomCurrencyValue = (currency, currencies = []) => {
+  const currencyItem = currencies.find(
+    (item) => Number(item.id) === Number(currency) || String(item.code || item.label) === String(currency)
+  );
+  const value = String(currencyItem?.code || currencyItem?.label || currency || "").trim().toUpperCase();
+  return ["KGS", "СОМ", "SOM"].includes(value);
+};
 const isImageFile = (file) => file?.mime_type?.startsWith("image");
 
 const toNumber = (value) => {
@@ -198,6 +198,7 @@ export default function ProjectPayments() {
   const [paymentTypes, setPaymentTypes] = useState([]);
   const [paymentStatuses, setPaymentStatuses] = useState([]);
   const [paymentArticles, setPaymentArticles] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
   const [payments, setPayments] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
@@ -207,6 +208,7 @@ export default function ProjectPayments() {
   const [search, setSearch] = useState("");
   const [blockFilter, setBlockFilter] = useState("");
   const [quickFilter, setQuickFilter] = useState("expense");
+  const [statusFilter, setStatusFilter] = useState("");
   const [articleFilter, setArticleFilter] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
@@ -218,6 +220,8 @@ export default function ProjectPayments() {
   const [paymentFiles, setPaymentFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [downloadingReportId, setDownloadingReportId] = useState(null);
+  const swipeBackRef = useRef({ x: 0, y: 0, active: false });
 
   const pageClass = `space-y-3 pb-24 ${themeText.page(isDark)}`;
   const titleClass = themeText.title(isDark);
@@ -237,6 +241,24 @@ export default function ProjectPayments() {
     [dictionaries.projectBlocks, projectId]
   );
 
+  const currencies = dictionaries.currencies || [];
+
+  const defaultCurrency = useMemo(
+    () => currencies.find((item) => ["KGS", "СОМ", "SOM"].includes(String(item.code || item.label || "").toUpperCase())) || currencies[0] || null,
+    [currencies]
+  );
+
+  const getCurrencyMeta = useCallback((currencyValue) => (
+    currencies.find(
+      (item) => Number(item.id) === Number(currencyValue) || String(item.code || item.label) === String(currencyValue)
+    ) || null
+  ), [currencies]);
+
+  const getCurrencyLabel = useCallback((currencyValue, currencyRef = null) => {
+    const currency = currencyRef || getCurrencyMeta(currencyValue);
+    return currency?.code || currency?.label || currency?.name || "KGS";
+  }, [getCurrencyMeta]);
+
   const incomeType = useMemo(
     () => paymentTypes.find((item) => item.code === "income") || null,
     [paymentTypes]
@@ -245,19 +267,6 @@ export default function ProjectPayments() {
   const expenseType = useMemo(
     () => paymentTypes.find((item) => item.code === "expense") || null,
     [paymentTypes]
-  );
-
-  const plannedStatusIds = useMemo(
-    () =>
-      paymentStatuses
-        .filter((item) => item.code === "draft" || item.code === "planned")
-        .map((item) => Number(item.id)),
-    [paymentStatuses]
-  );
-
-  const paidStatusIds = useMemo(
-    () => paymentStatuses.filter((item) => item.code === "paid").map((item) => Number(item.id)),
-    [paymentStatuses]
   );
 
   const currentCounterpartyOptions = useMemo(() => {
@@ -310,18 +319,14 @@ export default function ProjectPayments() {
     return map;
   }, [paymentStatuses]);
 
-  const getCurrencyRateByCode = useCallback((currencyCode) => {
-    if (!currencyCode || currencyCode === "KGS") return "1";
-
-    const currency = (dictionaries.currencies || []).find(
-      (item) => String(item.code || item.label) === String(currencyCode)
-    );
-
+  const getCurrencyRateById = useCallback((currencyId) => {
+    if (!currencyId || isSomCurrencyValue(currencyId, currencies)) return "1";
+    const currency = getCurrencyMeta(currencyId);
     if (!currency) return "";
 
     const rateRow = rates.find((item) => Number(item.currency_id) === Number(currency.id));
     return rateRow?.rate ? String(rateRow.rate) : "";
-  }, [dictionaries.currencies, rates]);
+  }, [currencies, getCurrencyMeta, rates]);
 
   const loadInitial = useCallback(async () => {
     try {
@@ -331,16 +336,18 @@ export default function ProjectPayments() {
         getRequest("/payments/types"),
         getRequest("/payments/statuses"),
         getRequest("/payments/articles"),
+        getRequest("/payments/methods"),
         loadDictionaries(["projectBlocks", "currencies", "suppliers", "contractors"]),
         getRequest(`/currencyRates/getByDate/${formatDateReverse(new Date())}`)
       ]);
 
-      const [projectResult, typesResult, statusesResult, articlesResult, dictionariesResult, ratesResult] = results;
+      const [projectResult, typesResult, statusesResult, articlesResult, methodsResult, dictionariesResult, ratesResult] = results;
 
       const projectRes = projectResult.status === "fulfilled" ? projectResult.value : null;
       const typesRes = typesResult.status === "fulfilled" ? typesResult.value : null;
       const statusesRes = statusesResult.status === "fulfilled" ? statusesResult.value : null;
       const articlesRes = articlesResult.status === "fulfilled" ? articlesResult.value : null;
+      const methodsRes = methodsResult.status === "fulfilled" ? methodsResult.value : null;
       const dicts = dictionariesResult.status === "fulfilled" ? dictionariesResult.value : {};
       const ratesRes = ratesResult.status === "fulfilled" ? ratesResult.value : null;
 
@@ -348,6 +355,7 @@ export default function ProjectPayments() {
       if (typesResult.status === "rejected") console.error("ProjectPayments types load error", typesResult.reason);
       if (statusesResult.status === "rejected") console.error("ProjectPayments statuses load error", statusesResult.reason);
       if (articlesResult.status === "rejected") console.error("ProjectPayments articles load error", articlesResult.reason);
+      if (methodsResult.status === "rejected") console.error("ProjectPayments methods load error", methodsResult.reason);
       if (dictionariesResult.status === "rejected") console.error("ProjectPayments dictionaries load error", dictionariesResult.reason);
       if (ratesResult.status === "rejected") console.error("ProjectPayments rates load error", ratesResult.reason);
 
@@ -355,19 +363,19 @@ export default function ProjectPayments() {
       const nextTypes = typesRes?.success ? typesRes.data || [] : [];
       const nextStatuses = statusesRes?.success ? statusesRes.data || [] : [];
       const nextArticles = articlesRes?.success ? articlesRes.data || [] : [];
+      const nextMethods = methodsRes?.success ? methodsRes.data || [] : [];
       const nextDicts = dicts || {};
       const nextRates = ratesRes?.success ? ratesRes.data || [] : [];
-      const nextCurrency = nextDicts.currencies?.find((item) => item.code === "KGS")?.code
-        || nextDicts.currencies?.[0]?.code
-        || "KGS";
+      const nextCurrencyItem = nextDicts.currencies?.find((item) => ["KGS", "СОМ", "SOM"].includes(String(item.code || item.label || "").toUpperCase()))
+        || nextDicts.currencies?.[0]
+        || null;
+      const nextCurrency = nextCurrencyItem?.id ? String(nextCurrencyItem.id) : "";
       const nextDefaultType = nextTypes.find((item) => item.code === "expense")?.id || nextTypes[0]?.id || "";
       const nextRate =
-        nextCurrency === "KGS"
+        !nextCurrency || isSomCurrencyValue(nextCurrency, nextDicts.currencies || [])
           ? "1"
           : (() => {
-              const currency = (nextDicts.currencies || []).find(
-                (item) => String(item.code || item.label) === String(nextCurrency)
-              );
+              const currency = (nextDicts.currencies || []).find((item) => Number(item.id) === Number(nextCurrency));
               const rateRow = nextRates.find((item) => Number(item.currency_id) === Number(currency?.id));
               return rateRow?.rate ? String(rateRow.rate) : "";
             })();
@@ -376,6 +384,7 @@ export default function ProjectPayments() {
       setPaymentTypes(nextTypes);
       setPaymentStatuses(nextStatuses);
       setPaymentArticles(nextArticles);
+      setPaymentMethods(nextMethods);
       setDictionaries(nextDicts);
       setRates(nextRates);
       setPaymentForm((prev) => ({
@@ -409,10 +418,10 @@ export default function ProjectPayments() {
         payload.payment_type = Number(incomeType.id);
       } else if (quickFilter === "expense" && expenseType?.id) {
         payload.payment_type = Number(expenseType.id);
-      } else if (quickFilter === "planned" && plannedStatusIds.length) {
-        payload.statuses = plannedStatusIds;
-      } else if (quickFilter === "paid" && paidStatusIds.length) {
-        payload.statuses = paidStatusIds;
+      }
+
+      if (statusFilter) {
+        payload.statuses = [Number(statusFilter)];
       }
 
       const res = await postRequest("/payments/search", payload);
@@ -430,7 +439,7 @@ export default function ProjectPayments() {
     } finally {
       setLoading(false);
     }
-  }, [projectId, blockFilter, articleFilter, search, page, quickFilter, incomeType, expenseType, plannedStatusIds, paidStatusIds]);
+  }, [projectId, blockFilter, articleFilter, statusFilter, search, page, quickFilter, incomeType, expenseType]);
 
   useEffect(() => {
     loadInitial();
@@ -519,6 +528,7 @@ export default function ProjectPayments() {
 
   const setQuickFilterAndResetPage = (value) => {
     setQuickFilter(value);
+    setArticleFilter("");
     setPage(1);
   };
 
@@ -541,12 +551,12 @@ export default function ProjectPayments() {
       block_id: defaultBlockId,
       payment_type: defaultType ? String(defaultType) : "",
       entity_type: "purchaseOrder",
-      currency: "KGS",
+      currency: defaultCurrency?.id ? String(defaultCurrency.id) : "",
       currency_rate: "1"
     });
     setSourceOptions([]);
     setEditingPayment(null);
-  }, [blockFilter, expenseType, incomeType, projectBlocks, quickFilter]);
+  }, [blockFilter, defaultCurrency, expenseType, incomeType, projectBlocks, quickFilter]);
 
   const openCreateModal = () => {
     resetForm();
@@ -563,16 +573,16 @@ export default function ProjectPayments() {
       entity_id: payment.entity_id ? String(payment.entity_id) : "",
       title: payment.title || "",
       amount: payment.amount ?? "",
-      currency: payment.currency || "KGS",
+      currency: payment.currency ? String(payment.currency) : (defaultCurrency?.id ? String(defaultCurrency.id) : ""),
       currency_rate:
-        payment.currency_rate ?? (getCurrencyRateByCode(payment.currency || "KGS") || ""),
+        payment.currency_rate ?? (getCurrencyRateById(payment.currency || defaultCurrency?.id) || ""),
       planned_date: payment.planned_date || "",
       paid_date: payment.paid_date || "",
       counterparty_type: payment.counterparty_type || "",
       counterparty_id: payment.counterparty_id ? String(payment.counterparty_id) : "",
       counterparty_name: payment.counterparty_name || "",
       counterparty_inn: payment.counterparty_inn || "",
-      payment_method: payment.payment_method || "",
+      payment_method: payment.payment_method ? String(payment.payment_method) : "",
       account_type: payment.account_type || "",
       document_number: payment.document_number || "",
       external_number: payment.external_number || "",
@@ -582,11 +592,11 @@ export default function ProjectPayments() {
     setModalOpen(true);
   };
 
-  const handleCurrencyChange = (currencyCode) => {
+  const handleCurrencyChange = (currencyId) => {
     setPaymentForm((prev) => ({
       ...prev,
-      currency: currencyCode,
-      currency_rate: getCurrencyRateByCode(currencyCode)
+      currency: currencyId,
+      currency_rate: getCurrencyRateById(currencyId)
     }));
   };
 
@@ -747,7 +757,7 @@ export default function ProjectPayments() {
       entity_id: paymentForm.entity_type === "manual" || !paymentForm.entity_id ? null : Number(paymentForm.entity_id),
       title: String(paymentForm.title || "").trim(),
       amount: paymentForm.amount,
-      currency: paymentForm.currency || "KGS",
+      currency: paymentForm.currency ? Number(paymentForm.currency) : null,
       currency_rate: paymentForm.currency_rate || null,
       planned_date: paymentForm.planned_date || null,
       paid_date: paymentForm.paid_date || null,
@@ -761,7 +771,7 @@ export default function ProjectPayments() {
           ? String(paymentForm.counterparty_name || "").trim()
           : paymentForm.counterparty_name || null,
       counterparty_inn: normalizeInnInput(paymentForm.counterparty_inn),
-      payment_method: paymentForm.payment_method || null,
+      payment_method: paymentForm.payment_method ? Number(paymentForm.payment_method) : null,
       account_type: paymentForm.account_type || null,
       document_number: String(paymentForm.document_number || "").trim() || null,
       external_number: String(paymentForm.external_number || "").trim() || null,
@@ -772,6 +782,7 @@ export default function ProjectPayments() {
 
     if (!payload.block_id) return toast.error("Выберите блок");
     if (!payload.payment_type) return toast.error("Выберите тип платежа");
+    if (!payload.currency) return toast.error("Выберите валюту");
     if (!payload.title) return toast.error("Введите название платежа");
     if (!payload.amount) return toast.error("Введите сумму");
     if (paymentForm.entity_type !== "manual" && !payload.entity_id) return toast.error("Выберите источник");
@@ -823,6 +834,104 @@ export default function ProjectPayments() {
     } catch (error) {
       console.error("ProjectPayments updatePaymentStatus error", error);
       toast.error("Ошибка обновления статуса");
+    }
+  };
+
+  const getFilenameFromDisposition = (disposition, fallback) => {
+    if (!disposition) return fallback;
+
+    const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1]);
+      } catch {
+        return fallback;
+      }
+    }
+
+    const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+    return filenameMatch?.[1] || fallback;
+  };
+
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result;
+        if (typeof result !== "string") {
+          reject(new Error("Failed to convert blob"));
+          return;
+        }
+
+        resolve(result.split(",")[1] || "");
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const saveNativeReport = async (blob, filename) => {
+    const base64Data = await blobToBase64(blob);
+    return Filesystem.writeFile({
+      path: filename,
+      data: base64Data,
+      directory: Directory.Documents
+    });
+  };
+
+  const downloadPaymentCashOrderReport = async (payment) => {
+    const token = getAuthToken();
+    const format = "xlsx";
+
+    try {
+      setDownloadingReportId(payment.id);
+
+      let res = null;
+      let lastError = null;
+
+      for (const url of reportsFallbackURLs()) {
+        try {
+          res = await fetch(`${url}/report/paymentCashOrder/${payment.id}?format=${format}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          });
+
+          if (res.ok) break;
+          lastError = new Error(`HTTP ${res.status}`);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!res?.ok) {
+        throw lastError || new Error("Report service is unavailable");
+      }
+
+      const blob = await res.blob();
+      const reportName = payment.payment_type_ref?.code === "income" ? "ПКО" : "РКО";
+      const filename = getFilenameFromDisposition(
+        res.headers.get("Content-Disposition"),
+        `${reportName} №${payment.id}.${format}`
+      );
+
+      if (Capacitor.isNativePlatform()) {
+        await saveNativeReport(blob, filename);
+        toast.success(`Файл сохранен: ${filename}`);
+      } else {
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(downloadUrl);
+        toast.success("Отчет скачан");
+      }
+    } catch (error) {
+      console.error("ProjectPayments downloadPaymentCashOrderReport error", error);
+      toast.error("Ошибка скачивания отчета");
+    } finally {
+      setDownloadingReportId(null);
     }
   };
 
@@ -972,10 +1081,42 @@ export default function ProjectPayments() {
     }
   };
 
+  const handleSwipeBackStart = (event) => {
+    const touch = event.touches?.[0];
+    const isModalOpen = modalOpen || filesModalPayment;
+
+    if (!touch || isModalOpen || touch.clientX > 32) {
+      swipeBackRef.current = { x: 0, y: 0, active: false };
+      return;
+    }
+
+    swipeBackRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      active: true
+    };
+  };
+
+  const handleSwipeBackEnd = (event) => {
+    const swipe = swipeBackRef.current;
+    const touch = event.changedTouches?.[0];
+
+    swipeBackRef.current = { x: 0, y: 0, active: false };
+
+    if (!swipe.active || !touch) return;
+
+    const deltaX = touch.clientX - swipe.x;
+    const deltaY = touch.clientY - swipe.y;
+
+    if (deltaX > 80 && Math.abs(deltaY) < 50) {
+      navigate(-1);
+    }
+  };
+
   const activeTabClass = "bg-blue-600 text-white";
 
   return (
-    <div className={pageClass}>
+    <div className={pageClass} onTouchStart={handleSwipeBackStart} onTouchEnd={handleSwipeBackEnd}>
       <div className="mb-1 flex items-start justify-between gap-3">
         <div>
           <h1 className={`text-lg font-semibold ${titleClass}`}>Платежи: {project?.name || "..."}</h1>
@@ -988,7 +1129,7 @@ export default function ProjectPayments() {
 
       <PullToRefresh onRefresh={loadPayments} contentClassName="space-y-3">
         <div className={panelClass}>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {QUICK_FILTERS.map((item) => (
               <button
                 key={item.key}
@@ -1017,21 +1158,39 @@ export default function ProjectPayments() {
           </div>
 
           <div className="mt-3 grid grid-cols-1 gap-2">
-            <select
-              value={blockFilter}
-              onChange={(e) => {
-                setBlockFilter(e.target.value);
-                setPage(1);
-              }}
-              className={modalInputClass}
-            >
-              <option value="">Все блоки</option>
-              {projectBlocks.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={blockFilter}
+                onChange={(e) => {
+                  setBlockFilter(e.target.value);
+                  setPage(1);
+                }}
+                className={modalInputClass}
+              >
+                <option value="">Все блоки</option>
+                {projectBlocks.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+                className={modalInputClass}
+              >
+                <option value="">Все статусы</option>
+                {paymentStatuses.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div className="flex items-center gap-2">
               <select
@@ -1079,6 +1238,15 @@ export default function ProjectPayments() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    onClick={() => downloadPaymentCashOrderReport(payment)}
+                    disabled={downloadingReportId === payment.id}
+                    className={`${actionTileClass} h-8 w-8 p-0 disabled:opacity-60`}
+                    title="Скачать ПКО/РКО"
+                  >
+                    <Download size={14} />
+                  </button>
+
                   <button onClick={() => openPaymentFiles(payment)} className={`${actionTileClass} h-8 w-8 p-0`} title="Файлы">
                     <FileText size={14} />
                   </button>
@@ -1110,7 +1278,7 @@ export default function ProjectPayments() {
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-lg font-semibold">
-                      {formatMoney(payment.amount)} {payment.currency || "KGS"}
+                      {formatMoney(payment.amount)} {getCurrencyLabel(payment.currency, payment.currency_ref)}
                     </div>
                   </div>
                 </div>
@@ -1124,7 +1292,7 @@ export default function ProjectPayments() {
                     <span className={secondaryTextClass}>Факт: </span>
                     <span className={titleClass}>{formatDate(payment.paid_date)}</span>
                   </div>
-                  {!isSomCurrency(payment.currency) && payment.currency_rate ? (
+                  {!isSomCurrencyValue(payment.currency, currencies) && payment.currency_rate ? (
                     <div className={`col-span-2 ${secondaryTextClass}`}>Курс НБКР: {payment.currency_rate}</div>
                   ) : null}
                 </div>
@@ -1397,8 +1565,8 @@ export default function ProjectPayments() {
                   onChange={(e) => handleCurrencyChange(e.target.value)}
                   className={modalInputClass}
                 >
-                  {(dictionaries.currencies || []).map((item) => (
-                    <option key={item.id} value={item.code || item.label}>
+                  {currencies.map((item) => (
+                    <option key={item.id} value={item.id}>
                       {item.code || item.label}
                     </option>
                   ))}
@@ -1406,7 +1574,7 @@ export default function ProjectPayments() {
               </Field>
             </div>
 
-            {!isSomCurrency(paymentForm.currency) ? (
+            {!isSomCurrencyValue(paymentForm.currency, currencies) ? (
               <Field label="Курс НБКР">
                 <input
                   value={paymentForm.currency_rate || ""}
@@ -1502,9 +1670,10 @@ export default function ProjectPayments() {
                   onChange={(e) => handleFormChange("payment_method", e.target.value)}
                   className={modalInputClass}
                 >
-                  {PAYMENT_METHOD_OPTIONS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
+                  <option value="">Не выбран</option>
+                  {paymentMethods.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
                     </option>
                   ))}
                 </select>
