@@ -4,7 +4,7 @@ import { ClipboardList, Plus, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import { AuthContext } from "../auth/AuthContext";
 import PullToRefresh from "../components/PullToRefresh";
-import { getRequest, postRequest, putRequest } from "../api/request";
+import { getRequest, postRequest } from "../api/request";
 import { useTheme } from "../context/ThemeContext";
 import { loadDictionaries } from "../utils/dictionaryLoader";
 import { formatDateReverse, formatDateTime } from "../utils/date";
@@ -75,8 +75,6 @@ export default function MaterialRequests() {
     : "border border-slate-300 bg-white text-black";
 
   const getApprovalField = (stage) => `approved_by_${stage}`;
-  const getUserField = (stage) => `${stage}_user_id`;
-
   useEffect(() => {
     loadDicts();
     loadRates();
@@ -211,23 +209,18 @@ export default function MaterialRequests() {
     return true;
   };
 
-  const isLastApproval = (request, stage) =>
-    workflow.every((current) => {
-      if (current === stage) return true;
-      return request[getApprovalField(current)];
-    });
-
-  const findEstimateByBlock = async () => {
-    const estimate = dictionaries.materialEstimates?.find((item) => item.block_id === Number(blockId));
-    return estimate?.id;
-  };
-
   const approveRequest = async (requestId, stage) => {
     const request = requests.find((item) => item.id === requestId);
+    if (!request) {
+      toast.error("Заявка не найдена");
+      return;
+    }
+
     const needCheck = stage === "planning_engineer" || stage === "admin";
+    const requestItems = request.items || [];
 
     if (needCheck) {
-      const invalid = request.items
+      const invalid = requestItems
         .filter((item) => item.item_type === 2 && item.status === 1)
         .some((item) => {
           if (!item.price) return true;
@@ -242,72 +235,26 @@ export default function MaterialRequests() {
       }
     }
 
-    const isLast = isLastApproval(request, stage);
-
-    if (isLast) {
-      const materialEstimateId = await findEstimateByBlock();
-
-      for (const item of request.items.filter((current) => current.item_type === 2 && !current.material_estimate_item_id)) {
-        const createPayload = [
-          {
-            material_estimate_id: materialEstimateId,
-            stage_id: item.stage_id,
-            subsection_id: item.subsection_id,
-            item_type: 1,
-            entry_type: 2,
-            material_type: item.material_type,
-            material_id: item.material_id,
-            unit_of_measure: item.unit_of_measure,
-            quantity_planned: item.quantity,
-            coefficient: item.coefficient,
-            currency: item.currency,
-            currency_rate: item.currency_rate,
-            price: item.price,
-            comment: item.comment || ""
-          }
-        ];
-
-        const createRes = await postRequest("/materialEstimateItems/create", createPayload);
-
-        if (!createRes.success) {
-          toast.error("Ошибка создания элемента сметы");
-          return;
-        }
-
-        const createdId = createRes.data?.[0]?.id;
-
-        if (!createdId) {
-          toast.error("Не удалось получить ID элемента сметы");
-          return;
-        }
-
-        const updatePayload = {
-          material_estimate_item_id: createdId,
+    const payload = {
+      stage,
+      items: requestItems
+        .filter((item) => item.item_type === 2 && item.status === 1)
+        .map((item) => ({
+          id: item.id,
           price: item.price,
           coefficient: item.coefficient,
-          currency: item.currency,
-          currency_rate: item.currency_rate
-        };
-
-        const updateRes = await putRequest(`/materialRequestItems/update/${item.id}`, updatePayload);
-
-        if (!updateRes.success) {
-          toast.error("Ошибка обновления элементов заявки");
-          return;
-        }
-      }
-    }
-
-    const payload = {
-      [getApprovalField(stage)]: true,
-      [getUserField(stage)]: user.id
+          currency: item.currency ?? 1,
+          currency_rate: item.currency_rate ?? 1
+        }))
     };
 
-    const res = await putRequest(`/materialRequests/update/${requestId}`, payload);
+    const res = await postRequest(`/materialRequests/sign/${requestId}`, payload);
 
     if (res.success) {
       loadRequests();
       toast.success("Заявка подписана");
+    } else {
+      toast.error(res.message || "Не удалось подписать заявку");
     }
   };
 

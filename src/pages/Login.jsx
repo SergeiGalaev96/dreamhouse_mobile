@@ -9,6 +9,7 @@ import {
   isBiometricLoginEnabled,
   setAuthToken
 } from "../utils/authStorage";
+import { getHomePath } from "../utils/roleAccess";
 
 export default function Login() {
   const { login: setAuth, loginWithBiometrics } = useContext(AuthContext);
@@ -29,8 +30,8 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await loginWithBiometrics();
-      navigate("/projects");
+      const authUser = await loginWithBiometrics();
+      navigate(getHomePath(authUser));
     } catch (e) {
       if (!silent) {
         toast.error(e?.message || "Не удалось войти по биометрии");
@@ -85,7 +86,7 @@ export default function Login() {
         }
 
         setAuth(res.data, res.token);
-        navigate("/projects");
+        navigate(getHomePath(res.data));
       } else {
         toast.error(res.message || "Ошибка авторизации");
       }
@@ -129,7 +130,7 @@ export default function Login() {
 
       if (loginRes.success) {
         setAuth(loginRes.data, loginRes.token);
-        navigate("/projects");
+        navigate(getHomePath(loginRes.data));
       }
     } catch (e) {
       toast.error(e?.response?.data?.message || "Ошибка сервера");

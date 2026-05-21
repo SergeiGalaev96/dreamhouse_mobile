@@ -21,6 +21,7 @@ import { SocketContext } from "../context/socket-context";
 import { postRequest } from "../api/request";
 import { useTheme } from "../context/ThemeContext";
 import { themeMisc, themeSurface } from "../utils/themeStyles";
+import { canAccessSales } from "../utils/roleAccess";
 
 const ADMIN_ROLE_ID = 1;
 const SUPPLIER_MANAGER_ROLE_IDS = [ADMIN_ROLE_ID, 10, 11];
@@ -44,6 +45,7 @@ export default function MainLayout() {
   const isAdmin = user?.role_id === ADMIN_ROLE_ID;
   const canManageSuppliers = SUPPLIER_MANAGER_ROLE_IDS.includes(user?.role_id);
   const canManageMaterials = MATERIAL_MANAGER_ROLE_IDS.includes(Number(user?.role_id));
+  const canOpenSales = canAccessSales(user);
   const canOpenProjects = !isSupplier;
 
   useEffect(() => {
@@ -53,7 +55,11 @@ export default function MainLayout() {
       navigate("/supplier-orders");
     }
 
-  }, [user, isSupplier, location.pathname, navigate]);
+    if (!canOpenSales && (location.pathname === "/sales" || location.pathname.includes("/sales"))) {
+      navigate(isSupplier ? "/dashboard" : "/projects", { replace: true });
+    }
+
+  }, [user, isSupplier, canOpenSales, location.pathname, navigate]);
 
   const triggerNotificationFeedback = useCallback(() => {
     setShake(true);
@@ -396,7 +402,7 @@ export default function MainLayout() {
             Профиль
           </button>
 
-          {!isSupplier && (
+          {canOpenSales && (
             <button
               onClick={() => {
                 navigate("/sales");

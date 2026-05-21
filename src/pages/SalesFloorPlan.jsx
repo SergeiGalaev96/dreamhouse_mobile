@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Grid3X3, Plus, Trash2, Upload } from "lucide-react";
+import { Download, Grid3X3, Minus, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../api/axios";
 import PullToRefresh from "../components/PullToRefresh";
 import { deleteRequest, getRequest, postRequest } from "../api/request";
+import { loadDictionaries } from "../utils/dictionaryLoader";
+import { normalizeDecimalInput, toNullableNumber } from "../utils/numberInput";
 import { useTheme } from "../context/ThemeContext";
 import { themeControl, themeSurface, themeText } from "../utils/themeStyles";
 
@@ -14,7 +16,7 @@ const EMPTY_UNIT_FORM = {
   rooms: "",
   area_total: "",
   price_total: "",
-  currency: "KGS",
+  currency: "",
   status_id: "",
   description: ""
 };
@@ -36,6 +38,12 @@ const CYRILLIC_BLOCK_MAP = {
 
 const isSvgFile = (file) =>
   file?.mime_type === "image/svg+xml" || /\.svg$/i.test(file?.name || "");
+
+const getFloorLabel = (floor) => {
+  if (!floor) return "—";
+  const customName = String(floor.name || "").trim();
+  return customName || `${floor.floor_number} этаж`;
+};
 
 const buildBlockCode = (blockName) => {
   const value = String(blockName || "").trim();
@@ -61,6 +69,16 @@ const buildUnitCode = ({ lotType, blockName, floorNumber, unitNumber }) => {
     padCode(floorNumber, 2),
     padCode(unitNumber, 3)
   ].join("-");
+};
+
+const getNextUnitNumber = (items = []) => {
+  const maxNumber = items.reduce((max, item) => {
+    const value = String(item?.unit_number || "").trim();
+    if (!/^\d+$/.test(value)) return max;
+    return Math.max(max, Number(value));
+  }, 0);
+
+  return String(maxNumber + 1);
 };
 
 function Modal({ title, subtitle, onClose, children }) {
@@ -99,6 +117,7 @@ export default function SalesFloorPlan() {
   const [project, setProject] = useState(null);
   const [overview, setOverview] = useState(null);
   const [unitStatuses, setUnitStatuses] = useState([]);
+  const [currencies, setCurrencies] = useState([]);
   const [selectedFloorId, setSelectedFloorId] = useState(Number(floorId));
   const [selectedUnitId, setSelectedUnitId] = useState(null);
   const [loadingFloorPlan, setLoadingFloorPlan] = useState(false);
@@ -110,6 +129,7 @@ export default function SalesFloorPlan() {
   const [planFilesSaving, setPlanFilesSaving] = useState(false);
   const [planFilesLoading, setPlanFilesLoading] = useState(false);
   const [floorPlanFiles, setFloorPlanFiles] = useState([]);
+  const [floorPlanZoom, setFloorPlanZoom] = useState(1.7);
 
   const pageClass = themeText.page(isDark);
   const titleClass = themeText.title(isDark);
@@ -132,6 +152,7 @@ export default function SalesFloorPlan() {
     }
     return map;
   }, [unitStatuses]);
+  const defaultCurrencyId = currencies.find((item) => item.code === "KGS")?.id || currencies[0]?.id || "";
 
   const unitCodePreview = useMemo(
     () =>
@@ -159,36 +180,49 @@ export default function SalesFloorPlan() {
 
   const getStatusMeta = (unit) => {
     const status = statusMap.get(Number(unit?.status_id));
-    const code = status?.code;
+    const code = String(status?.code || "").toLowerCase();
+    const label = String(status?.name || "").toLowerCase();
 
-    if (code === "free") {
-      return {
-        label: status?.name || "Свободно",
-        svgFill: "rgba(255,255,255,0.98)",
-        svgStroke: "#3f3f46"
-      };
-    }
-
-    if (code === "reserved") {
+    if (code === "reserved" || label.includes("брон")) {
       return {
         label: status?.name || "Бронь",
-        svgFill: "rgba(250,204,21,0.72)",
-        svgStroke: "#ca8a04"
+        svgFill: "#facc15",
+        svgFillOpacity: "0.55",
+        svgStroke: "#eab308",
+        svgStrokeOpacity: "0.95",
+        highlightable: true
       };
     }
 
-    if (code === "sold") {
+    if (code === "sold" || code === "buyout" || label.includes("продан") || label.includes("выкуп")) {
       return {
         label: status?.name || "Продано",
-        svgFill: "rgba(163,163,163,0.86)",
-        svgStroke: "#52525b"
+        svgFill: "#4b5563",
+        svgFillOpacity: "0.72",
+        svgStroke: "#1f2937",
+        svgStrokeOpacity: "0.95",
+        highlightable: true
+      };
+    }
+
+    if (code === "free" || label.includes("свобод")) {
+      return {
+        label: status?.name || "Свободно",
+        svgFill: "none",
+        svgFillOpacity: "0",
+        svgStroke: "none",
+        svgStrokeOpacity: "0",
+        highlightable: false
       };
     }
 
     return {
       label: status?.name || "Без статуса",
-      svgFill: "rgba(241,245,249,0.95)",
-      svgStroke: "#94a3b8"
+      svgFill: "#e2e8f0",
+      svgFillOpacity: "0.2",
+      svgStroke: "#94a3b8",
+      svgStrokeOpacity: "0.7",
+      highlightable: false
     };
   };
 
@@ -203,8 +237,14 @@ export default function SalesFloorPlan() {
 
       svg.setAttribute("data-sales-floor-plan", "true");
       svg.setAttribute("preserveAspectRatio", svg.getAttribute("preserveAspectRatio") || "xMidYMid meet");
-      svg.setAttribute("width", svg.getAttribute("width") || "1180");
-      svg.setAttribute("height", svg.getAttribute("height") || "760");
+      if (!svg.getAttribute("viewBox")) {
+        const width = svg.getAttribute("width") || "1180";
+        const height = svg.getAttribute("height") || "760";
+        svg.setAttribute("viewBox", `0 0 ${parseFloat(width) || 1180} ${parseFloat(height) || 760}`);
+      }
+      svg.setAttribute("width", "100%");
+      svg.setAttribute("height", "auto");
+      svg.setAttribute("style", "display:block;width:100%;height:auto;");
 
       const style = xml.createElementNS("http://www.w3.org/2000/svg", "style");
       style.textContent = `
@@ -218,10 +258,24 @@ export default function SalesFloorPlan() {
           .map((value) => (value === null || value === undefined ? "" : String(value).trim()))
           .filter(Boolean);
 
+        const selectorKeys = [...new Set(keys.flatMap((key) => {
+          const normalizedNumber = /^\d+$/.test(key) ? String(Number(key)) : "";
+          return [key, normalizedNumber].filter(Boolean);
+        }))];
+
         let root = null;
         for (const key of keys) {
           root = xml.getElementById(key);
           if (root) break;
+        }
+        if (!root) {
+          for (const key of selectorKeys) {
+            const safeKey = key.replace(/"/g, '\\"');
+            root = svg.querySelector(
+              `[data-unit-number="${safeKey}"], [data-unit-code="${safeKey}"], [data-plan-code="${safeKey}"], [data-external-code="${safeKey}"]`
+            );
+            if (root) break;
+          }
         }
         if (!root) return;
 
@@ -234,13 +288,25 @@ export default function SalesFloorPlan() {
         const shapeSelector = "path, polygon, rect, polyline, ellipse, circle";
         const shapes = root.matches?.(shapeSelector) ? [root] : Array.from(root.querySelectorAll(shapeSelector));
         const targets = shapes.length ? shapes : [root];
+        const shouldHighlight = isActive && meta.highlightable;
 
         targets.forEach((shape) => {
           const currentStrokeWidth = shape.getAttribute("stroke-width") || "2";
+          const strokeWidth = shouldHighlight ? "3" : currentStrokeWidth;
           shape.setAttribute("fill", meta.svgFill);
-          shape.setAttribute("stroke", isActive ? "#2563eb" : meta.svgStroke);
-          shape.setAttribute("stroke-width", isActive ? "4" : currentStrokeWidth);
+          shape.setAttribute("fill-opacity", meta.svgFillOpacity);
+          shape.setAttribute("stroke", shouldHighlight ? "#2563eb" : meta.svgStroke);
+          shape.setAttribute("stroke-opacity", shouldHighlight ? "1" : meta.svgStrokeOpacity);
+          shape.setAttribute("stroke-width", strokeWidth);
           shape.setAttribute("vector-effect", "non-scaling-stroke");
+          const currentStyle = shape.getAttribute("style") || "";
+          shape.setAttribute(
+            "style",
+            `${currentStyle};fill:${meta.svgFill}!important;fill-opacity:${meta.svgFillOpacity}!important;stroke:${shouldHighlight ? "#2563eb" : meta.svgStroke}!important;stroke-opacity:${shouldHighlight ? "1" : meta.svgStrokeOpacity}!important;stroke-width:${strokeWidth}px!important;vector-effect:non-scaling-stroke;`
+          );
+          if (shouldHighlight && shape.parentNode) {
+            shape.parentNode.appendChild(shape);
+          }
         });
       });
 
@@ -253,15 +319,17 @@ export default function SalesFloorPlan() {
 
   const loadPage = async () => {
     try {
-      const [projectRes, overviewRes, unitStatusesRes] = await Promise.all([
+      const [projectRes, overviewRes, unitStatusesRes, dicts] = await Promise.all([
         getRequest(`/projects/getById/${projectId}`),
         getRequest(`/sales/blocks/${blockId}/overview`),
-        getRequest("/sales/unit-statuses")
+        getRequest("/sales/unit-statuses"),
+        loadDictionaries(["currencies"])
       ]);
 
       if (projectRes?.success) setProject(projectRes.data || null);
       if (overviewRes?.success) setOverview(overviewRes.data || null);
       if (unitStatusesRes?.success) setUnitStatuses(unitStatusesRes.data || []);
+      setCurrencies(dicts?.currencies || []);
     } catch (error) {
       console.error("SalesFloorPlan load error", error);
       toast.error(error?.response?.data?.message || "Не удалось загрузить планировку этажа");
@@ -282,7 +350,7 @@ export default function SalesFloorPlan() {
       const createRes = await postRequest("/documents/create", {
         entity_type: "salesFloorPlan",
         entity_id: Number(targetFloorId),
-        name: `План этажа ${selectedFloor?.floor_number || ""}`.trim(),
+        name: `План этажа ${getFloorLabel(selectedFloor)}`.trim(),
         description: `SVG-план этажа для ${overview?.block?.name || "блока"}`,
         status: 1
       });
@@ -391,11 +459,8 @@ export default function SalesFloorPlan() {
         throw new Error("Документ этажа не создан");
       }
 
-      for (const existingFile of existingFiles) {
-        const deleteRes = await deleteRequest(`/documentFiles/${existingFile.id}`);
-        if (!deleteRes?.success) {
-          throw new Error(deleteRes?.message || "Не удалось заменить старый SVG-план");
-        }
+      if (existingFiles.length) {
+        throw new Error("Для этого этажа уже загружен план. Сначала удалите старый файл");
       }
 
       const formData = new FormData();
@@ -465,7 +530,9 @@ export default function SalesFloorPlan() {
 
     setUnitForm({
       ...EMPTY_UNIT_FORM,
-      status_id: unitStatuses[0]?.id ? String(unitStatuses[0].id) : ""
+      unit_number: getNextUnitNumber(units),
+      status_id: unitStatuses[0]?.id ? String(unitStatuses[0].id) : "",
+      currency: defaultCurrencyId ? String(defaultCurrencyId) : ""
     });
     setUnitModalOpen(true);
   };
@@ -489,9 +556,9 @@ export default function SalesFloorPlan() {
         unit_number: unitForm.unit_number.trim(),
         lot_type: unitForm.lot_type,
         rooms: unitForm.rooms === "" ? null : Number(unitForm.rooms),
-        area_total: unitForm.area_total === "" ? null : Number(unitForm.area_total),
-        price_total: unitForm.price_total === "" ? null : Number(unitForm.price_total),
-        currency: unitForm.currency.trim() || "KGS",
+        area_total: toNullableNumber(unitForm.area_total),
+        price_total: toNullableNumber(unitForm.price_total),
+        currency: unitForm.currency ? Number(unitForm.currency) : null,
         status_id: unitForm.status_id ? Number(unitForm.status_id) : null,
         description: unitForm.description.trim() || null
       };
@@ -532,6 +599,11 @@ export default function SalesFloorPlan() {
     if (unit) openUnitDetails(unit);
   };
 
+  const floorPlanLimitReached = floorPlanFiles.length > 0;
+  const changeFloorPlanZoom = (delta) => {
+    setFloorPlanZoom((prev) => Math.min(2, Math.max(0.5, Number((prev + delta).toFixed(2)))));
+  };
+
   return (
     <div className={`min-h-full ${pageClass}`}>
       <PullToRefresh onRefresh={handleRefresh}>
@@ -539,7 +611,7 @@ export default function SalesFloorPlan() {
           <div>
             <h1 className={`text-xl font-semibold ${titleClass}`}>Планировка этажа</h1>
             <div className={`text-sm ${secondaryTextClass}`}>
-              {project?.name || "Объект"} • {overview?.block?.name || "Блок"} • {selectedFloor?.floor_number || "—"} этаж
+              {project?.name || "Объект"} • {overview?.block?.name || "Блок"} • {getFloorLabel(selectedFloor)}
             </div>
           </div>
           <button onClick={() => navigate(`/projects/${projectId}/sales`)} className={subtleButtonClass}>
@@ -552,7 +624,7 @@ export default function SalesFloorPlan() {
             <select value={selectedFloorId || ""} onChange={(e) => handleFloorSelect(e.target.value)} className={modalInputClass}>
               {floors.map((floor) => (
                 <option key={floor.id} value={floor.id}>
-                  {floor.floor_number} этаж
+                  {getFloorLabel(floor)}
                 </option>
               ))}
             </select>
@@ -583,13 +655,12 @@ export default function SalesFloorPlan() {
                 <button
                   key={unit.id}
                   onClick={() => openUnitDetails(unit)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
-                    Number(selectedUnitId) === Number(unit.id)
+                  className={`rounded-full border px-4 py-2 text-sm transition ${Number(selectedUnitId) === Number(unit.id)
                       ? "border-white bg-white/15 text-white"
                       : "border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
-                  }`}
+                    }`}
                 >
-                  {formatArea(unit.area_total)} №{unit.unit_number}
+                  №{unit.unit_number || unit.id}
                 </button>
               ))}
             </div>
@@ -606,11 +677,7 @@ export default function SalesFloorPlan() {
                 </div>
                 <div className="flex flex-wrap items-center gap-3 rounded-xl border border-stone-300 bg-white/85 px-4 py-3 text-xs text-slate-700 shadow-sm">
                   <div className="flex items-center gap-2">
-                    <span className="h-4 w-4 rounded-full border border-slate-400 bg-white" />
-                    <span>Свободно</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-4 w-4 rounded-full border border-slate-400 bg-slate-400" />
+                    <span className="h-4 w-4 rounded-full border border-slate-700 bg-slate-600" />
                     <span>Продано</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -620,17 +687,39 @@ export default function SalesFloorPlan() {
                 </div>
               </div>
 
+              {renderedFloorPlanSvg ? (
+                <div className="mb-2 flex items-center justify-end gap-1 px-2">
+                  <button type="button" onClick={() => changeFloorPlanZoom(-0.1)} className="rounded-lg bg-white px-2 py-2 text-slate-700 shadow-sm ring-1 ring-stone-200 active:scale-95">
+                    <Minus size={14} />
+                  </button>
+                  <button type="button" onClick={() => setFloorPlanZoom(1)} className="flex min-w-[64px] items-center justify-center gap-1 rounded-lg bg-white px-2 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-stone-200 active:scale-95">
+                    <RotateCcw size={13} />
+                    {Math.round(floorPlanZoom * 100)}%
+                  </button>
+                  <button type="button" onClick={() => changeFloorPlanZoom(0.1)} className="rounded-lg bg-white px-2 py-2 text-slate-700 shadow-sm ring-1 ring-stone-200 active:scale-95">
+                    <Plus size={14} />
+                  </button>
+                </div>
+              ) : null}
+
               <div className="overflow-auto pb-2">
                 {loadingFloorPlan ? (
-                  <div className="mx-auto flex min-h-[780px] min-w-[1180px] items-center justify-center bg-[#fcfbf7] p-2 text-sm text-slate-500">
+                  <div className="mx-auto flex min-h-[520px] w-full items-center justify-center bg-[#fcfbf7] p-2 text-sm text-slate-500 sm:min-h-[720px]">
                     Загружаем план этажа...
                   </div>
                 ) : renderedFloorPlanSvg ? (
-                  <div className="mx-auto min-h-[780px] min-w-[1180px] bg-[#fcfbf7] p-1">
-                    <div className="mx-auto w-fit" onClick={handleExternalSvgClick} dangerouslySetInnerHTML={{ __html: renderedFloorPlanSvg }} />
+                  <div
+                    className="mx-auto bg-[#fcfbf7] p-1"
+                    style={{
+                      width: `${floorPlanZoom * 100}%`,
+                      maxWidth: `${1180 * floorPlanZoom}px`,
+                      minWidth: floorPlanZoom > 1 ? `${100 * floorPlanZoom}%` : "100%"
+                    }}
+                  >
+                    <div className="mx-auto w-full" onClick={handleExternalSvgClick} dangerouslySetInnerHTML={{ __html: renderedFloorPlanSvg }} />
                   </div>
                 ) : (
-                  <div className="mx-auto flex min-h-[780px] min-w-[1180px] items-center justify-center border border-dashed border-stone-300 bg-[#fcfbf7] p-2 text-center">
+                  <div className="mx-auto flex min-h-[520px] w-full items-center justify-center border border-dashed border-stone-300 bg-[#fcfbf7] p-2 text-center sm:min-h-[720px]">
                     <div className="max-w-md space-y-3 text-slate-500">
                       <div className="text-lg font-semibold text-slate-700">Для этого этажа пока не загружен реальный SVG-план</div>
                       <div className="text-sm">
@@ -646,17 +735,17 @@ export default function SalesFloorPlan() {
       </PullToRefresh>
 
       {planManagerOpen && (
-        <Modal title="Планы этажа" subtitle={`${overview?.block?.name || "Блок"} • ${selectedFloor?.floor_number || "—"} этаж`} onClose={() => setPlanManagerOpen(false)}>
+        <Modal title="Планы этажа" subtitle={`${overview?.block?.name || "Блок"} • ${getFloorLabel(selectedFloor)}`} onClose={() => setPlanManagerOpen(false)}>
           <div className="space-y-4">
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-3 text-sm text-gray-300">
               У зон в SVG должен быть <span className="font-semibold text-white">id</span>, совпадающий с{" "}
-              <span className="font-semibold text-white">кодом квартиры</span>. На этаж загружается только один актуальный SVG-план, новый файл заменяет старый.
+              <span className="font-semibold text-white">кодом квартиры</span>. На этаж загружается только один актуальный SVG-план. Для замены сначала удалите старый файл.
             </div>
 
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-500">
+            <label className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-white ${floorPlanLimitReached || planFilesSaving ? "cursor-not-allowed bg-gray-700 opacity-70" : "cursor-pointer bg-blue-600 hover:bg-blue-500"}`}>
               <Upload size={16} />
-              <span>{planFilesSaving ? "Загрузка..." : "Загрузить SVG"}</span>
-              <input type="file" accept=".svg,image/svg+xml" className="hidden" onChange={handleUploadPlan} />
+              <span>{floorPlanLimitReached ? "SVG уже загружен" : (planFilesSaving ? "Загрузка..." : "Загрузить SVG")}</span>
+              <input type="file" accept=".svg,image/svg+xml" className="hidden" onChange={handleUploadPlan} disabled={floorPlanLimitReached || planFilesSaving} />
             </label>
 
             <div className="space-y-[6px]">
@@ -693,11 +782,11 @@ export default function SalesFloorPlan() {
       )}
 
       {unitModalOpen && (
-        <Modal title="Новый лот" subtitle={`${overview?.block?.name || "Блок"} • ${selectedFloor?.floor_number || "—"} этаж`} onClose={closeUnitModal}>
+        <Modal title="Новый лот" subtitle={`${overview?.block?.name || "Блок"} • ${getFloorLabel(selectedFloor)}`} onClose={closeUnitModal}>
           <form onSubmit={saveUnit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Этаж">
-                <input value={`${selectedFloor?.floor_number || "—"} этаж`} className={modalInputClass} disabled />
+                <input value={getFloorLabel(selectedFloor)} className={modalInputClass} disabled />
               </Field>
               <Field label="Тип">
                 <select
@@ -738,15 +827,22 @@ export default function SalesFloorPlan() {
                 <input value={unitForm.rooms} onChange={(e) => setUnitForm((prev) => ({ ...prev, rooms: e.target.value }))} className={modalInputClass} inputMode="numeric" />
               </Field>
               <Field label="Площадь">
-                <input value={unitForm.area_total} onChange={(e) => setUnitForm((prev) => ({ ...prev, area_total: e.target.value }))} className={modalInputClass} inputMode="decimal" />
+                <input value={unitForm.area_total} onChange={(e) => setUnitForm((prev) => ({ ...prev, area_total: normalizeDecimalInput(e.target.value) }))} className={modalInputClass} inputMode="decimal" />
               </Field>
               <Field label="Валюта">
-                <input value={unitForm.currency} onChange={(e) => setUnitForm((prev) => ({ ...prev, currency: e.target.value }))} className={modalInputClass} />
+                <select value={unitForm.currency} onChange={(e) => setUnitForm((prev) => ({ ...prev, currency: e.target.value }))} className={modalInputClass}>
+                  <option value="">Р’С‹Р±РµСЂРёС‚Рµ РІР°Р»СЋС‚Сѓ</option>
+                  {currencies.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.code || item.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
 
             <Field label="Цена">
-              <input value={unitForm.price_total} onChange={(e) => setUnitForm((prev) => ({ ...prev, price_total: e.target.value }))} className={modalInputClass} inputMode="decimal" />
+              <input value={unitForm.price_total} onChange={(e) => setUnitForm((prev) => ({ ...prev, price_total: normalizeDecimalInput(e.target.value) }))} className={modalInputClass} inputMode="decimal" />
             </Field>
 
             <Field label="Код квартиры">

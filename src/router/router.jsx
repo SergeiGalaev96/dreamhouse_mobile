@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { AuthContext } from "../auth/AuthContext";
 import PrivateRoute from "../components/PrivateRoute";
 import MainLayout from "../layout/MainLayout";
+import { canAccessSales, getHomePath, ROLE_IDS } from "../utils/roleAccess";
 
 const Login = lazy(() => import("../pages/Login"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
@@ -35,11 +36,11 @@ const MaterialWriteOffs = lazy(() => import("../pages/MaterialWriteOffs"));
 const PurchaseOrders = lazy(() => import("../pages/PurchaseOrders"));
 const PurchaseOrdersCreate = lazy(() => import("../pages/PurchaseOrdersCreate"));
 const SupplierPurchaseOrders = lazy(() => import("../pages/SupplierPurchaseOrders"));
-const SalesBlock = lazy(() => import("../pages/SalesBlock"));
 const SalesManagement = lazy(() => import("../pages/SalesManagement"));
 const ProjectSales = lazy(() => import("../pages/ProjectSales"));
 const SalesFloorPlan = lazy(() => import("../pages/SalesFloorPlan"));
 const SalesUnitDetails = lazy(() => import("../pages/SalesUnitDetails"));
+const PublicSalesApp = lazy(() => import("../pages/PublicSalesApp"));
 
 const ADMIN_ROLE_ID = 1;
 const SUPPLIER_MANAGER_ROLE_IDS = [ADMIN_ROLE_ID, 10, 11];
@@ -62,9 +63,11 @@ function MobileBackHandler({ user }) {
   const rootPaths = useMemo(() => {
     if (!user) return ["/login"];
 
-    return user.role_id === 13
-      ? ["/dashboard", "/supplier-orders", "/profile", "/notifications"]
-      : ["/projects", "/sales", "/dashboard", "/profile", "/notifications"];
+    const paths = [getHomePath(user), "/dashboard", "/profile", "/notifications"];
+    if (Number(user.role_id) === ROLE_IDS.supplier) paths.push("/supplier-orders");
+    if (Number(user.role_id) !== ROLE_IDS.supplier) paths.push("/projects");
+    if (canAccessSales(user)) paths.push("/sales");
+    return [...new Set(paths)];
   }, [user]);
 
   useEffect(() => {
@@ -147,12 +150,6 @@ function MobileBackHandler({ user }) {
           return;
         }
 
-        const salesBlockMatch = location.pathname.match(/^\/projects\/(\d+)\/blocks\/(\d+)\/sales$/);
-        if (salesBlockMatch) {
-          navigate(`/projects/${salesBlockMatch[1]}`);
-          return;
-        }
-
         const projectSalesMatch = location.pathname.match(/^\/projects\/(\d+)\/sales$/);
         if (projectSalesMatch) {
           navigate(`/projects/${projectSalesMatch[1]}`);
@@ -213,6 +210,8 @@ export default function Router() {
   const canManageUsers = user?.role_id === ADMIN_ROLE_ID;
   const canManageSuppliers = SUPPLIER_MANAGER_ROLE_IDS.includes(user?.role_id);
   const canManageMaterials = MATERIAL_MANAGER_ROLE_IDS.includes(Number(user?.role_id));
+  const canOpenSales = canAccessSales(user);
+  const homePath = getHomePath(user);
   const withSuspense = (element) => <Suspense fallback={<RouteLoader />}>{element}</Suspense>;
 
   return (
@@ -221,6 +220,7 @@ export default function Router() {
 
       <Routes>
         <Route path="/login" element={withSuspense(<Login />)} />
+        <Route path="/public-sales" element={withSuspense(<PublicSalesApp />)} />
 
         <Route
           element={(
@@ -232,11 +232,11 @@ export default function Router() {
           <Route path="/dashboard" element={withSuspense(<Dashboard />)} />
 
           <Route path="/projects" element={withSuspense(<Projects />)} />
-          <Route path="/sales" element={user?.role_id === 13 ? <Navigate to="/supplier-orders" replace /> : withSuspense(<SalesManagement />)} />
+          <Route path="/sales" element={canOpenSales ? withSuspense(<SalesManagement />) : <Navigate to={homePath} replace />} />
           <Route path="/projects/:projectId" element={withSuspense(<ProjectCard />)} />
-          <Route path="/projects/:projectId/sales" element={withSuspense(<ProjectSales />)} />
-          <Route path="/projects/:projectId/sales/blocks/:blockId/floors/:floorId" element={withSuspense(<SalesFloorPlan />)} />
-          <Route path="/projects/:projectId/sales/blocks/:blockId/floors/:floorId/units/:unitId" element={withSuspense(<SalesUnitDetails />)} />
+          <Route path="/projects/:projectId/sales" element={canOpenSales ? withSuspense(<ProjectSales />) : <Navigate to={homePath} replace />} />
+          <Route path="/projects/:projectId/sales/blocks/:blockId/floors/:floorId" element={canOpenSales ? withSuspense(<SalesFloorPlan />) : <Navigate to={homePath} replace />} />
+          <Route path="/projects/:projectId/sales/blocks/:blockId/floors/:floorId/units/:unitId" element={canOpenSales ? withSuspense(<SalesUnitDetails />) : <Navigate to={homePath} replace />} />
           <Route path="/projects/:projectId/documents" element={withSuspense(<ProjectDocuments />)} />
           <Route path="/projects/:projectId/reports" element={withSuspense(<ProjectReports />)} />
           <Route path="/projects/:projectId/payments" element={withSuspense(<ProjectPayments />)} />
@@ -289,10 +289,6 @@ export default function Router() {
             element={withSuspense(<WorkPerformed />)}
           />
           <Route
-            path="/projects/:projectId/blocks/:blockId/sales"
-            element={withSuspense(<SalesBlock />)}
-          />
-          <Route
             path="/projects/:projectId/blocks/:blockId/work-performed-create"
             element={withSuspense(<WorkPerformedCreate />)}
           />
@@ -319,7 +315,7 @@ export default function Router() {
 
         <Route
           path="/"
-          element={user?.role_id === 13 ? <Navigate to="/dashboard" /> : <Navigate to="/projects" />}
+          element={<Navigate to={homePath} />}
         />
       </Routes>
     </BrowserRouter>

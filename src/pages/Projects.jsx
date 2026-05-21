@@ -214,6 +214,7 @@ export default function Projects() {
         start_date: projectForm.start_date || null,
         end_date: projectForm.end_date || null,
         planned_budget: normalizeNullableNumber(projectForm.planned_budget) || 0,
+        status: 1,
         manager_id: normalizeNullableNumber(projectForm.manager_id),
         foreman_id: normalizeNullableNumber(projectForm.foreman_id),
         master_id: normalizeNullableNumber(projectForm.master_id),

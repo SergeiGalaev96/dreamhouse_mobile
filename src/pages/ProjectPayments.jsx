@@ -199,6 +199,7 @@ export default function ProjectPayments() {
   const [paymentStatuses, setPaymentStatuses] = useState([]);
   const [paymentArticles, setPaymentArticles] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+  const [paymentCounterpartyTypes, setPaymentCounterpartyTypes] = useState([]);
   const [payments, setPayments] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
@@ -236,6 +237,15 @@ export default function ProjectPayments() {
   const actionTileClass = themeControl.actionTilePadded(isDark);
   const canControlStatus = STATUS_CONTROL_ROLE_IDS.includes(Number(user?.role_id));
 
+  const getCounterpartyTypeCode = useCallback((value) => (
+    paymentCounterpartyTypes.find((item) => Number(item.id) === Number(value))?.code || ""
+  ), [paymentCounterpartyTypes]);
+
+  const getCounterpartyTypeId = useCallback((code) => {
+    const row = paymentCounterpartyTypes.find((item) => item.code === code);
+    return row?.id ? String(row.id) : "";
+  }, [paymentCounterpartyTypes]);
+
   const projectBlocks = useMemo(
     () => (dictionaries.projectBlocks || []).filter((item) => Number(item.project_id) === Number(projectId)),
     [dictionaries.projectBlocks, projectId]
@@ -270,7 +280,9 @@ export default function ProjectPayments() {
   );
 
   const currentCounterpartyOptions = useMemo(() => {
-    if (paymentForm.counterparty_type === "supplier") {
+    const counterpartyTypeCode = getCounterpartyTypeCode(paymentForm.counterparty_type);
+
+    if (counterpartyTypeCode === "supplier") {
       if (paymentForm.entity_type === "purchaseOrder" && paymentForm.entity_id) {
         const source = sourceOptions.find((item) => String(item.id) === String(paymentForm.entity_id));
         const supplierIds = getPurchaseOrderSupplierIds(source);
@@ -282,11 +294,12 @@ export default function ProjectPayments() {
 
       return dictionaries.suppliers || [];
     }
-    if (paymentForm.counterparty_type === "contractor") return dictionaries.contractors || [];
+    if (counterpartyTypeCode === "contractor") return dictionaries.contractors || [];
     return [];
   }, [
     dictionaries.contractors,
     dictionaries.suppliers,
+    getCounterpartyTypeCode,
     paymentForm.counterparty_type,
     paymentForm.entity_id,
     paymentForm.entity_type,
@@ -337,17 +350,19 @@ export default function ProjectPayments() {
         getRequest("/payments/statuses"),
         getRequest("/payments/articles"),
         getRequest("/payments/methods"),
+        getRequest("/payments/counterparty-types"),
         loadDictionaries(["projectBlocks", "currencies", "suppliers", "contractors"]),
         getRequest(`/currencyRates/getByDate/${formatDateReverse(new Date())}`)
       ]);
 
-      const [projectResult, typesResult, statusesResult, articlesResult, methodsResult, dictionariesResult, ratesResult] = results;
+      const [projectResult, typesResult, statusesResult, articlesResult, methodsResult, counterpartyTypesResult, dictionariesResult, ratesResult] = results;
 
       const projectRes = projectResult.status === "fulfilled" ? projectResult.value : null;
       const typesRes = typesResult.status === "fulfilled" ? typesResult.value : null;
       const statusesRes = statusesResult.status === "fulfilled" ? statusesResult.value : null;
       const articlesRes = articlesResult.status === "fulfilled" ? articlesResult.value : null;
       const methodsRes = methodsResult.status === "fulfilled" ? methodsResult.value : null;
+      const counterpartyTypesRes = counterpartyTypesResult.status === "fulfilled" ? counterpartyTypesResult.value : null;
       const dicts = dictionariesResult.status === "fulfilled" ? dictionariesResult.value : {};
       const ratesRes = ratesResult.status === "fulfilled" ? ratesResult.value : null;
 
@@ -356,6 +371,7 @@ export default function ProjectPayments() {
       if (statusesResult.status === "rejected") console.error("ProjectPayments statuses load error", statusesResult.reason);
       if (articlesResult.status === "rejected") console.error("ProjectPayments articles load error", articlesResult.reason);
       if (methodsResult.status === "rejected") console.error("ProjectPayments methods load error", methodsResult.reason);
+      if (counterpartyTypesResult.status === "rejected") console.error("ProjectPayments counterparty types load error", counterpartyTypesResult.reason);
       if (dictionariesResult.status === "rejected") console.error("ProjectPayments dictionaries load error", dictionariesResult.reason);
       if (ratesResult.status === "rejected") console.error("ProjectPayments rates load error", ratesResult.reason);
 
@@ -364,6 +380,7 @@ export default function ProjectPayments() {
       const nextStatuses = statusesRes?.success ? statusesRes.data || [] : [];
       const nextArticles = articlesRes?.success ? articlesRes.data || [] : [];
       const nextMethods = methodsRes?.success ? methodsRes.data || [] : [];
+      const nextCounterpartyTypes = counterpartyTypesRes?.success ? counterpartyTypesRes.data || [] : [];
       const nextDicts = dicts || {};
       const nextRates = ratesRes?.success ? ratesRes.data || [] : [];
       const nextCurrencyItem = nextDicts.currencies?.find((item) => ["KGS", "СОМ", "SOM"].includes(String(item.code || item.label || "").toUpperCase()))
@@ -385,6 +402,7 @@ export default function ProjectPayments() {
       setPaymentStatuses(nextStatuses);
       setPaymentArticles(nextArticles);
       setPaymentMethods(nextMethods);
+      setPaymentCounterpartyTypes(nextCounterpartyTypes);
       setDictionaries(nextDicts);
       setRates(nextRates);
       setPaymentForm((prev) => ({
@@ -504,7 +522,7 @@ export default function ProjectPayments() {
               entity_id: String(source.id),
               title: `Оплата АВР ${source.code || `№${source.id}`}`,
               amount: formatAmountInput(remaining || total),
-              counterparty_type: "contractor",
+              counterparty_type: getCounterpartyTypeId("contractor"),
               counterparty_id: contractor ? String(contractor.id) : "",
               counterparty_name: contractor?.label || contractorName || ""
             }));
@@ -524,7 +542,7 @@ export default function ProjectPayments() {
     };
 
     loadSourceOptions();
-  }, [dictionaries.contractors, modalOpen, paymentArticles, paymentForm.article_id, paymentForm.block_id, paymentForm.entity_id, paymentForm.entity_type]);
+  }, [dictionaries.contractors, getCounterpartyTypeId, modalOpen, paymentArticles, paymentForm.article_id, paymentForm.block_id, paymentForm.entity_id, paymentForm.entity_type]);
 
   const setQuickFilterAndResetPage = (value) => {
     setQuickFilter(value);
@@ -578,7 +596,7 @@ export default function ProjectPayments() {
         payment.currency_rate ?? (getCurrencyRateById(payment.currency || defaultCurrency?.id) || ""),
       planned_date: payment.planned_date || "",
       paid_date: payment.paid_date || "",
-      counterparty_type: payment.counterparty_type || "",
+      counterparty_type: payment.counterparty_type ? String(payment.counterparty_type) : "",
       counterparty_id: payment.counterparty_id ? String(payment.counterparty_id) : "",
       counterparty_name: payment.counterparty_name || "",
       counterparty_inn: payment.counterparty_inn || "",
@@ -619,7 +637,7 @@ export default function ProjectPayments() {
       article_id: value,
       entity_type: nextEntityType || prev.entity_type,
       entity_id: nextEntityType && prev.entity_type !== nextEntityType ? "" : prev.entity_id,
-      counterparty_type: isSupplierPayment ? "supplier" : isContractorPayment ? "contractor" : prev.counterparty_type,
+      counterparty_type: isSupplierPayment ? getCounterpartyTypeId("supplier") : isContractorPayment ? getCounterpartyTypeId("contractor") : prev.counterparty_type,
       counterparty_id: isSupplierPayment || isContractorPayment ? "" : prev.counterparty_id,
       counterparty_name: isSupplierPayment || isContractorPayment ? "" : prev.counterparty_name
     }));
@@ -690,7 +708,7 @@ export default function ProjectPayments() {
           ...next,
           title: `Оплата закупа №${source.id}`,
           amount: formatAmountInput(supplierAmount || amount),
-          counterparty_type: isSupplierPayment || supplier ? "supplier" : prev.counterparty_type,
+          counterparty_type: isSupplierPayment || supplier ? getCounterpartyTypeId("supplier") : prev.counterparty_type,
           counterparty_id: selectedSupplierId ? String(selectedSupplierId) : "",
           counterparty_name: supplier?.label || ""
         };
@@ -708,7 +726,7 @@ export default function ProjectPayments() {
           ...next,
           title: `Оплата АВР ${source.code || `№${source.id}`}`,
           amount: formatAmountInput(remaining || total),
-          counterparty_type: contractor || contractorName ? "contractor" : prev.counterparty_type,
+          counterparty_type: contractor || contractorName ? getCounterpartyTypeId("contractor") : prev.counterparty_type,
           counterparty_id: contractor ? String(contractor.id) : prev.counterparty_id,
           counterparty_name: contractor?.label || contractorName || prev.counterparty_name
         };
@@ -720,10 +738,11 @@ export default function ProjectPayments() {
 
   const handleCounterpartySelect = (value) => {
     const selected = currentCounterpartyOptions.find((item) => String(item.id) === String(value));
+    const counterpartyTypeCode = getCounterpartyTypeCode(paymentForm.counterparty_type);
     const selectedPurchaseOrder = paymentForm.entity_type === "purchaseOrder" && paymentForm.entity_id
       ? sourceOptions.find((item) => String(item.id) === String(paymentForm.entity_id))
       : null;
-    const supplierAmount = paymentForm.counterparty_type === "supplier" && selectedPurchaseOrder && value
+    const supplierAmount = counterpartyTypeCode === "supplier" && selectedPurchaseOrder && value
       ? getPurchaseOrderSupplierAmount(selectedPurchaseOrder, value)
       : null;
 
@@ -747,6 +766,7 @@ export default function ProjectPayments() {
 
   const submitPayment = async () => {
     if (saving) return;
+    const counterpartyTypeCode = getCounterpartyTypeCode(paymentForm.counterparty_type);
 
     const payload = {
       project_id: Number(projectId),
@@ -761,13 +781,13 @@ export default function ProjectPayments() {
       currency_rate: paymentForm.currency_rate || null,
       planned_date: paymentForm.planned_date || null,
       paid_date: paymentForm.paid_date || null,
-      counterparty_type: paymentForm.counterparty_type || null,
+      counterparty_type: paymentForm.counterparty_type ? Number(paymentForm.counterparty_type) : null,
       counterparty_id:
-        paymentForm.counterparty_id && ["supplier", "contractor"].includes(paymentForm.counterparty_type)
+        paymentForm.counterparty_id && ["supplier", "contractor"].includes(counterpartyTypeCode)
           ? Number(paymentForm.counterparty_id)
           : null,
       counterparty_name:
-        paymentForm.counterparty_type && !["supplier", "contractor"].includes(paymentForm.counterparty_type)
+        paymentForm.counterparty_type && !["supplier", "contractor"].includes(counterpartyTypeCode)
           ? String(paymentForm.counterparty_name || "").trim()
           : paymentForm.counterparty_name || null,
       counterparty_inn: normalizeInnInput(paymentForm.counterparty_inn),
@@ -786,7 +806,7 @@ export default function ProjectPayments() {
     if (!payload.title) return toast.error("Введите название платежа");
     if (!payload.amount) return toast.error("Введите сумму");
     if (paymentForm.entity_type !== "manual" && !payload.entity_id) return toast.error("Выберите источник");
-    if (["supplier", "contractor"].includes(paymentForm.counterparty_type) && !payload.counterparty_id) {
+    if (["supplier", "contractor"].includes(counterpartyTypeCode) && !payload.counterparty_id) {
       return toast.error("Выберите контрагента");
     }
 
@@ -1618,23 +1638,24 @@ export default function ProjectPayments() {
                   onChange={(e) => handleCounterpartyTypeChange(e.target.value)}
                   className={modalInputClass}
                 >
-                  {COUNTERPARTY_TYPE_OPTIONS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
+                  <option value="">Не выбран</option>
+                  {paymentCounterpartyTypes.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
                     </option>
                   ))}
                 </select>
               </Field>
 
               <Field label="Контрагент">
-                {["supplier", "contractor"].includes(paymentForm.counterparty_type) ? (
+                {["supplier", "contractor"].includes(getCounterpartyTypeCode(paymentForm.counterparty_type)) ? (
                   <select
                     value={paymentForm.counterparty_id}
                     onChange={(e) => handleCounterpartySelect(e.target.value)}
                     className={modalInputClass}
                   >
                     <option value="">
-                      {paymentForm.counterparty_type === "supplier" && paymentForm.entity_type === "purchaseOrder" && !paymentForm.entity_id
+                      {getCounterpartyTypeCode(paymentForm.counterparty_type) === "supplier" && paymentForm.entity_type === "purchaseOrder" && !paymentForm.entity_id
                         ? "Сначала выберите закуп"
                         : "Выберите контрагента"}
                     </option>

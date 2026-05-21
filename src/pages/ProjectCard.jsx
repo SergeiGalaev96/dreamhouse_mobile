@@ -675,9 +675,8 @@ export default function ProjectCard() {
             <div onClick={openWarehouseStocks} className={actionButtonClass}>Склад</div>
           </div>
 
-          <div className="grid grid-cols-4 gap-1.5 pt-1 text-xs select-none">
+          <div className="grid grid-cols-1 gap-1.5 pt-1 text-xs select-none">
             <div onClick={() => navigate(`/projects/${projectId}/payments`)} className={actionButtonClass}>Платежи</div>
-            <div onClick={() => navigate(`/projects/${projectId}/sales`)} className={actionButtonClass}>Продажи</div>
           </div>
         </div>
 
